@@ -73,17 +73,16 @@ const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
         {/* Payment Method */}
         <div className="space-y-3">
           <label className="text-sm font-medium text-gray-300">Select Method</label>
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
             {[
               { id: 'gcash', name: 'GCash', color: 'bg-blue-600' },
               { id: 'maya', name: 'Maya', color: 'bg-green-600' },
               { id: 'bank_transfer', name: 'Bank Transfer', color: 'bg-indigo-600' },
-              { id: 'cash', name: 'Cash', color: 'bg-amber-600' },
-              { id: 'walk_in', name: 'Walk-in', color: 'bg-slate-600' }
+              { id: 'cash', name: 'Cash', color: 'bg-amber-600' }
             ].map(method => (
               <label key={method.id} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === method.id ? 'bg-[#1a1a24] border-gray-600' : 'bg-[#14141a] border-gray-800 hover:bg-[#1a1a24]'
                 }`}>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <input
                     type="radio"
                     name="paymentMethod"
@@ -94,7 +93,7 @@ const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
                   />
                   <span className="text-sm font-medium text-gray-200">{method.name}</span>
                 </div>
-                <div className={`w-8 h-5 rounded ${method.color} opacity-80`}></div>
+                <div className={`w-6 h-4 rounded shrink-0 ${method.color} opacity-80`}></div>
               </label>
             ))}
           </div>

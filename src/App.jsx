@@ -10,7 +10,6 @@ import {
   UserCircle,
   MapPin,
   X,
-  Sparkles,
   Loader2,
   BookOpen,
   ClipboardList,
@@ -136,14 +135,11 @@ function AppLayout() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Button onClick={() => navigate('/calendar?action=smart-book')} className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 border-none">
-              <Sparkles className="w-4 h-4" /> <span className="hidden sm:inline">Smart Book</span>
-            </Button>
-            <Button onClick={() => navigate('/calendar?action=new-booking')} className="gap-2">
+          {!location.pathname.startsWith('/book') && (
+            <Button onClick={() => navigate('/book')} className="gap-2">
               <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New Booking</span>
             </Button>
-          </div>
+          )}
         </header>
 
         {/* Dynamic View Content */}
