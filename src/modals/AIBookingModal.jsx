@@ -3,6 +3,7 @@ import { Sparkles, X, AlertCircle, Loader2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import ModalOverlay from '../components/ui/ModalOverlay';
 import { callGeminiAPI } from '../lib/gemini';
+import { venueConfig } from '../lib/venueConfig';
 
 const AIBookingModal = ({ courts, onClose, onSuccess }) => {
   const [prompt, setPrompt] = useState('');
@@ -19,7 +20,7 @@ const AIBookingModal = ({ courts, onClose, onSuccess }) => {
 
     try {
       const today = new Date();
-      const systemPrompt = `You are a professional assistant for the "YMCA", a basketball court booking system.
+      const systemPrompt = `You are a professional assistant for "${venueConfig.name}", a sports court booking system.
       Current Date Context: ${today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (${today.toISOString()}).
       Available Courts: ${JSON.stringify(courts.map(c => ({ id: c.id, name: c.name })))}.
 

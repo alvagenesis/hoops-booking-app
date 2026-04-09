@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phase 2 Test Checklist</title>
+  <style>
+    :root {
+      --bg: #0a0f1d;
+      --panel: #111116;
+      --panel-2: #16161c;
+      --text: #e8eefc;
+      --muted: #9fb0d1;
+      --accent: #60a5fa;
+      --green: #22c55e;
+      --border: #2a2a35;
+      --shadow: 0 10px 30px rgba(0,0,0,.3);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0c;
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 32px 20px 80px; }
+
+    /* Hero */
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
+    }
+    .pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(96,165,250,0.1);
+      color: #93c5fd;
+      border: 1px solid rgba(96,165,250,0.2);
+      margin-bottom: 10px;
+    }
+    h1 { font-size: 1.75rem; font-weight: 800; margin-bottom: 6px; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .stat-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+    .stat-value { font-size: 1.4rem; font-weight: 700; }
+    .stat-value.green { color: #4ade80; }
+    .stat-value.blue  { color: #60a5fa; }
+    .stat-value.muted { color: var(--muted); }
+
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      border: 1px solid var(--border);
+      background: #15213a;
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.85rem;
+      transition: border-color 0.15s;
+    }
+    button:hover { border-color: var(--accent); }
+    .btn-primary {
+      background: linear-gradient(180deg, #2563eb, #1d4ed8);
+      border-color: #3b82f6;
+    }
+
+    /* Sections */
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      margin-top: 14px;
+      box-shadow: var(--shadow);
+    }
+    .section-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .section-title { font-size: 0.95rem; font-weight: 700; }
+    .section-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+    .section-badge {
+      flex-shrink: 0;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+    .badge-manual { background: rgba(251,191,36,0.08); color: #fbbf24; border-color: rgba(251,191,36,0.25); }
+    .badge-code   { background: rgba(96,165,250,0.08); color: #93c5fd; border-color: rgba(96,165,250,0.25); }
+    .badge-e2e    { background: rgba(34,197,94,0.08);  color: #4ade80; border-color: rgba(34,197,94,0.25);  }
+
+    /* Items */
+    .item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 8px 6px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .item:first-of-type { border-top: 0; }
+
+    input[type="checkbox"] {
+      flex-shrink: 0;
+      width: 17px; height: 17px;
+      margin-top: 2px;
+      accent-color: var(--green);
+      cursor: pointer;
+    }
+    label { cursor: pointer; flex: 1; font-size: 0.88rem; color: #d1d5db; }
+    .done label { color: #6b7280; text-decoration: line-through; }
+
+    .note {
+      margin-top: 6px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      padding-left: 27px;
+    }
+    code {
+      background: rgba(255,255,255,0.06);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.82em;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .footer { margin-top: 28px; text-align: center; font-size: 0.82rem; color: #4b5563; }
+
+    @media (max-width: 500px) {
+      h1 { font-size: 1.4rem; }
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="pill">Phase 2 — Interactive Test Checklist</div>
+    <h1>What to Test & Confirm</h1>
+    <p class="subtitle">Covers P0 (Supabase), P1 (Success page), P2 (Payment instructions), P3 (BookingReview fixes), and P4 (UX polish + venueConfig). Progress saved in browser.</p>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Completed</div><div class="stat-value green" id="completedCount">0</div></div>
+      <div class="stat"><div class="stat-label">Remaining</div><div class="stat-value muted" id="remainingCount">0</div></div>
+      <div class="stat"><div class="stat-label">Progress</div><div class="stat-value blue" id="progressPct">0%</div></div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-primary" id="checkAll">Check all</button>
+      <button id="uncheckAll">Uncheck all</button>
+      <button id="reset">Reset saved progress</button>
+    </div>
+  </div>
+
+  <div id="checklist"></div>
+  <p class="footer">Saved locally in this browser · <code>docs/phase2-test-checklist.html</code></p>
+
+</div>
+
+<script>
+const KEY = 'phase2-test-checklist-v1';
+
+const sections = [
+  {
+    title: 'P0 — Supabase Environment',
+    sub: 'Manual steps applied before any live testing.',
+    badge: 'manual',
+    items: [
+      { text: 'supabase-guest-booking-force-fix.sql was applied in Supabase SQL editor' },
+      { text: 'payment-proofs storage bucket exists in Supabase Dashboard' },
+      { text: 'payment-proofs bucket is set to public (readable URLs)', note: 'Storage → payment-proofs → Bucket settings → Public toggle' },
+      { text: 'Storage policy allows authenticated users to upload proofs' },
+    ]
+  },
+  {
+    title: 'P1 — Booking Success Page',
+    sub: 'Guest booking now lands on /booking-success instead of /calendar silently.',
+    badge: 'code',
+    items: [
+      { text: 'Complete a full guest booking → page navigates to /booking-success (not /calendar)' },
+      { text: 'Success page shows the correct court name' },
+      { text: 'Success page shows the correct date(s) and time slot' },
+      { text: 'Success page shows the correct total amount' },
+      { text: 'Success page shows the customer name and phone entered at review step' },
+      { text: 'Payment status badge shows the right label (e.g. "Awaiting payment verification" if proof was uploaded)' },
+      { text: '"Book Another Slot" button navigates to /book' },
+      { text: '"Back to Calendar" button navigates to /calendar' },
+      { text: 'Visiting /booking-success directly (no state) redirects to /book', note: 'Open the URL fresh in a new tab — should redirect, not crash' },
+      { text: 'Member booking is unaffected — still navigates to /my-bookings after confirming', note: 'Log in, complete a booking as a member' },
+    ]
+  },
+  {
+    title: 'P2 — Payment Instructions',
+    sub: 'Payment modal now shows account details for digital payment methods.',
+    badge: 'code',
+    items: [
+      { text: 'GCash selected → instruction block appears with the account number and name' },
+      { text: 'Maya selected → instruction block appears with the account number and name' },
+      { text: 'Bank Transfer selected → instruction block shows bank, account number, account name' },
+      { text: 'Cash selected → NO instruction block shown' },
+      { text: 'Walk-in selected → NO instruction block shown' },
+      { text: 'Switching between methods updates the instructions in real time' },
+      { text: 'venueConfig.js has the real payment account details filled in', note: 'Replace 09XX-XXX-XXXX placeholders in src/lib/venueConfig.js before going live' },
+    ]
+  },
+  {
+    title: 'P3 — BookingReview Bug Fixes',
+    sub: 'Three bugs fixed: hours calc, guest-only callout, validation hints.',
+    badge: 'code',
+    items: [
+      { text: 'Book a 30-min slot → total amount in review step is correct (not ₱0)', note: 'e.g. ₱500/hr × 0.5h = ₱250' },
+      { text: 'Book a 90-min slot → total amount is correct', note: 'e.g. ₱500/hr × 1.5h = ₱750' },
+      { text: 'Book a 60-min slot → total amount still correct (unchanged baseline)' },
+      { text: 'Guest booking flow: "Public / guest-friendly booking path" callout IS visible at review step' },
+      { text: 'Member booking flow: that callout is NOT visible at review step', note: 'Log in, go to /book — review step should not show the guest info box' },
+      { text: 'Leave Name blank, click "Proceed to Payment" → "Name is required." hint appears in red' },
+      { text: 'Leave Phone blank, click "Proceed to Payment" → "Phone is required." hint appears in red' },
+      { text: 'Leave both blank → both hints show simultaneously' },
+      { text: 'Fill in Name and Phone → hints disappear and payment modal opens normally' },
+    ]
+  },
+  {
+    title: 'P4a — Hourly Rate in Time Slot Step',
+    sub: 'Price context shown before the customer reaches the payment step.',
+    badge: 'code',
+    items: [
+      { text: 'Step 3 (Select Time Slot) shows a ₱X/hr badge in the top-right corner' },
+      { text: 'Rate matches the selected court\'s hourly_rate from the database' },
+      { text: 'Switching courts (go back to step 1) and returning to step 3 shows the updated rate' },
+    ]
+  },
+  {
+    title: 'P4b — "Book as Guest" on Login Page',
+    sub: 'Guests no longer need to discover the /book route on their own.',
+    badge: 'code',
+    items: [
+      { text: '"Just need a slot? Book as Guest →" text is visible on the login screen' },
+      { text: 'Same link is visible on the register screen' },
+      { text: 'Link is NOT visible on the forgot password screen' },
+      { text: 'Clicking the link navigates to /book' },
+    ]
+  },
+  {
+    title: 'P4c — "Book a Slot" CTA on Public Calendar',
+    sub: 'Guests on /calendar have a clear path to start a booking.',
+    badge: 'code',
+    items: [
+      { text: 'Visit /calendar while logged out → guest banner appears at the top: "Want to reserve a slot?"' },
+      { text: '"Book a Slot →" link in the banner navigates to /book' },
+      { text: 'Visit /calendar while logged in → banner is NOT shown' },
+    ]
+  },
+  {
+    title: 'P4d — venueConfig Branding',
+    sub: 'YMCA/basketball hardcoding replaced with the central venueConfig.',
+    badge: 'code',
+    items: [
+      { text: 'Sidebar logo loads correctly (no broken image icon)' },
+      { text: 'Auth page logo (mobile + desktop) loads correctly' },
+      { text: 'Register page subtitle reads the venue name from config (not hardcoded "YMCA")' },
+      { text: 'Hero copy on auth page no longer says "basketball courts"', note: 'Should read: "The smarter way to manage and book sports courts — less admin, more play."' },
+      { text: 'AI booking modal: smart assistant system prompt references the configured venue name', note: 'Try a Smart Book request — error messages or parsed context should reflect the venue name' },
+    ]
+  },
+  {
+    title: 'End-to-End: Full Guest Booking Flow',
+    sub: 'The complete customer journey from landing to confirmation.',
+    badge: 'e2e',
+    items: [
+      { text: 'Open the app while logged out → lands on /book' },
+      { text: 'Step 1: Select a court — court name, description, and price visible' },
+      { text: 'Step 2: Select a date — calendar works correctly' },
+      { text: 'Step 3: Select a time slot — ₱X/hr rate shown, slot grid works' },
+      { text: 'Step 4 (Review): guest callout visible, name + phone required, total amount correct' },
+      { text: 'Payment modal: GCash/Maya shows payment instructions; upload proof (optional)' },
+      { text: 'Submit → /booking-success shows correct booking summary' },
+      { text: 'Confirm reservation row in Supabase: user_id IS NULL', note: 'Check in Supabase Table Editor → reservations' },
+      { text: 'Confirm booking_source = "guest" and is_guest_booking = true' },
+      { text: 'Confirm reservation_days row(s) exist for the booking' },
+      { text: 'Admin Transactions page shows the guest booking with correct customer name, phone, booking source' },
+      { text: 'Admin can approve the payment → status moves to confirmed/paid' },
+    ]
+  },
+  {
+    title: 'End-to-End: Member Booking (Regression)',
+    sub: 'Confirm member flow is unchanged after all Phase 2 edits.',
+    badge: 'e2e',
+    items: [
+      { text: 'Log in as a member → complete a booking' },
+      { text: 'After confirming → navigates to /my-bookings (not /booking-success)' },
+      { text: 'Booking appears under My Bookings' },
+      { text: 'Guest callout does NOT appear on the review step' },
+      { text: 'Calendar booking modal (clicking a date on /calendar) still works for logged-in users' },
+    ]
+  },
+];
+
+const el = id => document.getElementById(id);
+const listEl = el('checklist');
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
+}
+function save(s) { localStorage.setItem(KEY, JSON.stringify(s)); }
+function iid(si, ii) { return `s${si}-i${ii}`; }
+
+function render() {
+  const state = load();
+  listEl.innerHTML = '';
+
+  sections.forEach((sec, si) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'section';
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="section-title">${sec.title}</div><div class="section-sub">${sec.sub}</div>`;
+
+    const badge = document.createElement('span');
+    badge.className = `section-badge badge-${sec.badge}`;
+    badge.textContent = sec.badge === 'manual' ? 'Manual' : sec.badge === 'e2e' ? 'E2E' : 'Code';
+
+    header.appendChild(left);
+    header.appendChild(badge);
+    wrap.appendChild(header);
+
+    sec.items.forEach((item, ii) => {
+      const id = iid(si, ii);
+      const checked = Boolean(state[id]);
+
+      const row = document.createElement('div');
+      row.className = 'item' + (checked ? ' done' : '');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = id;
+      cb.checked = checked;
+      cb.addEventListener('change', () => {
+        const next = load();
+        next[id] = cb.checked;
+        save(next);
+        render();
+      });
+
+      const lbl = document.createElement('label');
+      lbl.htmlFor = id;
+      lbl.textContent = item.text;
+
+      row.appendChild(cb);
+      row.appendChild(lbl);
+      wrap.appendChild(row);
+
+      if (item.note) {
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.innerHTML = item.note.replace(/`([^`]+)`/g, '<code>$1</code>');
+        wrap.appendChild(note);
+      }
+    });
+
+    listEl.appendChild(wrap);
+  });
+
+  updateStats();
+}
+
+function updateStats() {
+  const state = load();
+  const total = sections.reduce((s, sec) => s + sec.items.length, 0);
+  const done = Object.values(state).filter(Boolean).length;
+  el('completedCount').textContent = done;
+  el('remainingCount').textContent = total - done;
+  el('progressPct').textContent = total ? Math.round(done / total * 100) + '%' : '0%';
+}
+
+el('checkAll').addEventListener('click', () => {
+  const next = {};
+  sections.forEach((sec, si) => sec.items.forEach((_, ii) => next[iid(si, ii)] = true));
+  save(next); render();
+});
+el('uncheckAll').addEventListener('click', () => {
+  const next = {};
+  sections.forEach((sec, si) => sec.items.forEach((_, ii) => next[iid(si, ii)] = false));
+  save(next); render();
+});
+el('reset').addEventListener('click', () => { localStorage.removeItem(KEY); render(); });
+
+render();
+</script>
+</body>
+</html>

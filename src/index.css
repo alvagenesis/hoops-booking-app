@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+html,
+body,
+#root {
+    min-height: 100%;
+    background: #0a0a0c;
+}
+
+body {
+    margin: 0;
+    color: #e5e7eb;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 /* Slide-in animation for detail sheets */
 @keyframes slide-in {
     from {

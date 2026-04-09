@@ -1,9 +1,8 @@
-import { useMemo, useCallback } from 'react';
-import { CreditCard, Download, Search, TrendingUp, DollarSign, Clock } from 'lucide-react';
+import { useMemo, useCallback, useState } from 'react';
+import { CreditCard, Download, Search, TrendingUp, DollarSign, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useReservations } from '../hooks/useReservations';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatLocalDate } from '../lib/utils';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
 
 function exportToCsv(rows, filename) {
     const headers = ['Date', 'Title', 'Court', 'Method', 'Total Amount', 'Paid Amount', 'Balance', 'Status'];
@@ -17,7 +16,7 @@ function exportToCsv(rows, filename) {
             tx.total_amount || 0,
             tx.paid_amount || 0,
             (tx.total_amount || 0) - (tx.paid_amount || 0),
-            tx.payment_status || 'pending',
+            tx.payment_status || 'unpaid',
         ].join(','))
     ];
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -32,23 +31,46 @@ function exportToCsv(rows, filename) {
 }
 
 const TransactionsPage = () => {
-    const { reservations, loading } = useReservations();
+    const { reservations, loading, updateReservation } = useReservations();
+    const [updatingId, setUpdatingId] = useState(null);
 
     // Filter to only reservations that have payments
     const transactions = useMemo(() => {
         return reservations
-            .filter(r => (r.paid_amount > 0 || r.payment_status === 'full'))
+            .filter(r => (r.paid_amount > 0 || ['paid', 'partial', 'for_verification'].includes(r.payment_status)))
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }, [reservations]);
 
     const stats = useMemo(() => {
         const total = transactions.reduce((sum, r) => sum + (r.paid_amount || 0), 0);
         const pending = transactions.reduce((sum, r) => sum + ((r.total_amount || 0) - (r.paid_amount || 0)), 0);
-        return { total, pending };
+        const reviewCount = transactions.filter(r => r.payment_status === 'for_verification').length;
+        return { total, pending, reviewCount };
     }, [transactions]);
 
+    const handlePaymentReview = useCallback(async (reservation, action) => {
+        setUpdatingId(reservation.id);
+        try {
+            if (action === 'approve') {
+                await updateReservation(reservation.id, {
+                    payment_status: 'paid',
+                    paid_amount: reservation.total_amount,
+                    status: 'confirmed',
+                    confirmed_at: new Date().toISOString(),
+                });
+            } else if (action === 'reject') {
+                await updateReservation(reservation.id, {
+                    payment_status: 'rejected',
+                    status: 'awaiting_payment',
+                });
+            }
+        } finally {
+            setUpdatingId(null);
+        }
+    }, [updateReservation]);
+
     const handleExport = useCallback(() => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatLocalDate(new Date());
         exportToCsv(transactions, `ymca-transactions-${today}.csv`);
     }, [transactions]);
 
@@ -132,8 +154,8 @@ const TransactionsPage = () => {
                             <Search className="w-5 h-5" />
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500 uppercase font-semibold">Transactions</p>
-                            <h3 className="text-xl font-bold text-gray-100">{transactions.length} entries</h3>
+                            <p className="text-xs text-gray-500 uppercase font-semibold">Needs Review</p>
+                            <h3 className="text-xl font-bold text-gray-100">{stats.reviewCount} items</h3>
                         </div>
                     </div>
                 </div>
@@ -155,6 +177,7 @@ const TransactionsPage = () => {
                                 <th className="px-6 py-4">Total</th>
                                 <th className="px-6 py-4">Paid</th>
                                 <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
@@ -164,8 +187,14 @@ const TransactionsPage = () => {
                                         {formatDate(new Date(tx.created_at))}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="text-sm font-medium text-gray-200">{tx.title || 'Reservation'}</div>
-                                        <div className="text-xs text-gray-500">ID: {tx.id.slice(0, 8)}</div>
+                                        <div className="text-sm font-medium text-gray-200">{tx.customer_name || tx.title || 'Reservation'}</div>
+                                        <div className="text-xs text-gray-500 flex flex-wrap gap-2">
+                                            <span>{tx.courts?.name || 'Unknown court'}</span>
+                                            <span>•</span>
+                                            <span className="capitalize">{tx.booking_source || (tx.user_id ? 'member' : 'guest')} booking</span>
+                                            <span>•</span>
+                                            <span>ID: {tx.id.slice(0, 8)}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-400 uppercase">
                                         {tx.payment_method || 'N/A'}
@@ -177,16 +206,48 @@ const TransactionsPage = () => {
                                         ₱{tx.paid_amount?.toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${tx.payment_status === 'full' ? 'bg-green-500/10 text-green-400' : 'bg-orange-500/10 text-orange-400'
-                                            }`}>
-                                            {tx.payment_status || 'Pending'}
-                                        </span>
+                                        <div className="space-y-1">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${paymentBadgeStyles(tx.payment_status)}`}>
+                                                {tx.payment_status || 'unpaid'}
+                                            </span>
+                                            {tx.payment_proof_url && (
+                                                <div>
+                                                    <a href={tx.payment_proof_url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300">
+                                                        View proof
+                                                    </a>
+                                                </div>
+                                            )}
+                                            {tx.customer_phone && <div className="text-[11px] text-gray-500">{tx.customer_phone}</div>}
+                                            {tx.customer_email && <div className="text-[11px] text-gray-500">{tx.customer_email}</div>}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {tx.payment_status === 'for_verification' ? (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handlePaymentReview(tx, 'approve')}
+                                                    disabled={updatingId === tx.id}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-500/10 text-green-400 hover:bg-green-500/20 disabled:opacity-50"
+                                                >
+                                                    <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePaymentReview(tx, 'reject')}
+                                                    disabled={updatingId === tx.id}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                                                >
+                                                    <AlertTriangle className="w-3.5 h-3.5" /> Reject
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-500">—</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
                             {transactions.length === 0 && (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500 text-sm">
+                                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500 text-sm">
                                         No recent transactions found.
                                     </td>
                                 </tr>
@@ -198,5 +259,20 @@ const TransactionsPage = () => {
         </div>
     );
 };
+
+function paymentBadgeStyles(status) {
+    switch (status) {
+        case 'paid':
+            return 'bg-green-500/10 text-green-400';
+        case 'partial':
+            return 'bg-orange-500/10 text-orange-400';
+        case 'for_verification':
+            return 'bg-yellow-500/10 text-yellow-400';
+        case 'rejected':
+            return 'bg-red-500/10 text-red-400';
+        default:
+            return 'bg-slate-500/10 text-slate-400';
+    }
+}
 
 export default TransactionsPage;

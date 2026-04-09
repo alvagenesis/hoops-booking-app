@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 export function useSchedule(courtId) {
     const [configs, setConfigs] = useState([]);
+    const [scheduleBlocks, setScheduleBlocks] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchConfigs = useCallback(async () => {
@@ -21,18 +22,29 @@ export function useSchedule(courtId) {
                 is_active: true
             }));
             setConfigs(mockConfigs);
+            setScheduleBlocks([]);
             setLoading(false);
             return;
         }
 
-        const { data, error } = await supabase
-            .from('time_slot_configs')
-            .select('*')
-            .eq('court_id', courtId)
-            .order('day_of_week');
+        const [{ data, error }, { data: blockData, error: blockError }] = await Promise.all([
+            supabase
+                .from('time_slot_configs')
+                .select('*')
+                .eq('court_id', courtId)
+                .order('day_of_week'),
+            supabase
+                .from('schedule_blocks')
+                .select('*')
+                .eq('court_id', courtId)
+                .order('date', { ascending: true }),
+        ]);
 
         if (!error && data) {
             setConfigs(data);
+        }
+        if (!blockError && blockData) {
+            setScheduleBlocks(blockData);
         }
         setLoading(false);
     }, [courtId]);
@@ -77,5 +89,38 @@ export function useSchedule(courtId) {
         await fetchConfigs();
     }
 
-    return { configs, loading, updateConfig, bulkUpdateSlots, refetch: fetchConfigs };
+    async function addScheduleBlock(block) {
+        if (!supabase) {
+            const mockBlock = { id: crypto.randomUUID(), ...block, created_at: new Date().toISOString() };
+            setScheduleBlocks(prev => [mockBlock, ...prev]);
+            return mockBlock;
+        }
+
+        const { data, error } = await supabase
+            .from('schedule_blocks')
+            .insert(block)
+            .select()
+            .single();
+
+        if (error) throw error;
+        setScheduleBlocks(prev => [data, ...prev]);
+        return data;
+    }
+
+    async function deleteScheduleBlock(id) {
+        if (!supabase) {
+            setScheduleBlocks(prev => prev.filter(block => block.id !== id));
+            return;
+        }
+
+        const { error } = await supabase
+            .from('schedule_blocks')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        setScheduleBlocks(prev => prev.filter(block => block.id !== id));
+    }
+
+    return { configs, scheduleBlocks, loading, updateConfig, bulkUpdateSlots, addScheduleBlock, deleteScheduleBlock, refetch: fetchConfigs };
 }

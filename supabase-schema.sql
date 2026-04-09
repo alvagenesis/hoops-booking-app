@@ -1,261 +1,350 @@
--- HoopsHQ MVP Database Schema
--- Run this in your Supabase SQL Editor
+-- HoopsBookingApp — Full Schema
+-- Run this once in the Supabase SQL Editor to set up the entire database from scratch.
+-- Safe to re-run: drops all tables and rebuilds cleanly.
+
+BEGIN;
 
 -- ============================================================
--- 0. CLEANUP (drop existing tables in reverse dependency order)
+-- 0. CLEANUP
 -- ============================================================
-drop table if exists public.reservation_days cascade;
-drop table if exists public.reservations cascade;
-drop table if exists public.time_slot_configs cascade;
-drop table if exists public.courts cascade;
-drop table if exists public.profiles cascade;
+DROP TABLE IF EXISTS public.schedule_blocks CASCADE;
+DROP TABLE IF EXISTS public.reservation_days CASCADE;
+DROP TABLE IF EXISTS public.reservations CASCADE;
+DROP TABLE IF EXISTS public.time_slot_configs CASCADE;
+DROP TABLE IF EXISTS public.courts CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
 
-drop function if exists public.prevent_double_booking() cascade;
-drop function if exists public.update_updated_at() cascade;
-drop function if exists public.handle_new_user() cascade;
+DROP FUNCTION IF EXISTS public.is_admin() CASCADE;
+DROP FUNCTION IF EXISTS public.prevent_double_booking() CASCADE;
+DROP FUNCTION IF EXISTS public.update_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
 
 -- ============================================================
--- 1. PROFILES (extends auth.users)
+-- 1. HELPER: is_admin()
 -- ============================================================
-create table if not exists public.profiles (
-  id uuid references auth.users(id) on delete cascade primary key,
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql SECURITY DEFINER STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+-- ============================================================
+-- 2. PROFILES
+-- ============================================================
+CREATE TABLE public.profiles (
+  id uuid REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   first_name text,
   last_name text,
   phone text,
   address text,
-  role text default 'user' check (role in ('admin', 'user')),
-  created_at timestamptz default now()
+  avatar_url text,
+  role text DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+  created_at timestamptz DEFAULT now()
 );
 
 -- Auto-create profile on signup
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, first_name, last_name, phone, address)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'first_name', ''),
-    coalesce(new.raw_user_meta_data->>'last_name', ''),
-    coalesce(new.raw_user_meta_data->>'phone', ''),
-    coalesce(new.raw_user_meta_data->>'address', '')
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+  INSERT INTO public.profiles (id, first_name, last_name, phone, address)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+    COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+    COALESCE(NEW.raw_user_meta_data->>'address', '')
   );
-  return new;
-end;
-$$ language plpgsql security definer;
+  RETURN NEW;
+END;
+$$;
 
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================
--- 2. COURTS
+-- 3. COURTS
 -- ============================================================
-create table if not exists public.courts (
-  id uuid default gen_random_uuid() primary key,
-  name text not null,
-  description text default '',
-  color text default '#8B5CF6' check (color ~ '^#[0-9A-Fa-f]{6}$'),
-  hourly_rate numeric not null default 0 check (hourly_rate >= 0),
-  is_active boolean default true,
-  sort_order integer default 0,
-  created_at timestamptz default now()
+CREATE TABLE public.courts (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text NOT NULL,
+  description text DEFAULT '',
+  color text DEFAULT '#8B5CF6' CHECK (color ~ '^#[0-9A-Fa-f]{6}$'),
+  hourly_rate numeric NOT NULL DEFAULT 0 CHECK (hourly_rate >= 0),
+  is_active boolean DEFAULT true,
+  sort_order integer DEFAULT 0,
+  created_at timestamptz DEFAULT now()
 );
 
 -- ============================================================
--- 3. TIME SLOT CONFIGS
+-- 4. TIME SLOT CONFIGS
 -- ============================================================
-create table if not exists public.time_slot_configs (
-  id uuid default gen_random_uuid() primary key,
-  court_id uuid references public.courts(id) on delete cascade not null,
-  day_of_week integer not null check (day_of_week between 0 and 6), -- 0=Sunday
-  start_time time not null default '06:00',
-  end_time time not null default '22:00',
-  slot_duration_minutes integer not null default 60 check (slot_duration_minutes in (30, 60, 90, 120)),
-  is_active boolean default true,
-  constraint unique_court_day unique (court_id, day_of_week),
-  constraint valid_time_range check (start_time < end_time)
+CREATE TABLE public.time_slot_configs (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  court_id uuid REFERENCES public.courts(id) ON DELETE CASCADE NOT NULL,
+  day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday
+  start_time time NOT NULL DEFAULT '06:00',
+  end_time time NOT NULL DEFAULT '22:00',
+  slot_duration_minutes integer NOT NULL DEFAULT 60 CHECK (slot_duration_minutes IN (30, 60, 90, 120)),
+  is_active boolean DEFAULT true,
+  CONSTRAINT unique_court_day UNIQUE (court_id, day_of_week),
+  CONSTRAINT valid_time_range CHECK (start_time < end_time)
 );
 
 -- ============================================================
--- 4. RESERVATIONS
+-- 5. RESERVATIONS
 -- ============================================================
-create table if not exists public.reservations (
-  id uuid default gen_random_uuid() primary key,
-  court_id uuid references public.courts(id) on delete cascade not null,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  title text default '',
-  notes text default '',
-  start_time time not null,
-  end_time time not null,
-  status text default 'pending' check (status in ('pending', 'confirmed', 'completed', 'cancelled')),
-  total_amount numeric default 0,
-  paid_amount numeric default 0,
-  payment_status text default 'pending' check (payment_status in ('pending', 'partial', 'full')),
-  payment_method text check (payment_method in ('gcash', 'maya', 'stripe', 'cash')),
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE TABLE public.reservations (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  court_id uuid REFERENCES public.courts(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE, -- nullable for guests
+  title text DEFAULT '',
+  notes text DEFAULT '',
+  start_time time NOT NULL,
+  end_time time NOT NULL,
+  status text DEFAULT 'awaiting_payment'
+    CHECK (status IN ('pending', 'awaiting_payment', 'confirmed', 'completed', 'cancelled', 'no_show')),
+  total_amount numeric DEFAULT 0,
+  paid_amount numeric DEFAULT 0,
+  payment_status text DEFAULT 'unpaid'
+    CHECK (payment_status IN ('unpaid', 'partial', 'for_verification', 'paid', 'rejected')),
+  payment_method text
+    CHECK (payment_method IN ('gcash', 'maya', 'cash', 'bank_transfer', 'walk_in')),
+  payment_proof_url text,
+  payment_notes text,
+  customer_name text,
+  customer_phone text,
+  customer_email text,
+  booking_source text DEFAULT 'member',
+  is_guest_booking boolean DEFAULT false,
+  confirmed_at timestamptz,
+  confirmed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
-
--- ============================================================
--- 5. RESERVATION DAYS
--- ============================================================
-create table if not exists public.reservation_days (
-  id uuid default gen_random_uuid() primary key,
-  reservation_id uuid references public.reservations(id) on delete cascade not null,
-  date date not null,
-  created_at timestamptz default now()
-);
-
--- Prevent double-booking: same court, same date, overlapping time
-create or replace function public.prevent_double_booking()
-returns trigger as $$
-begin
-  if exists (
-    select 1 from public.reservation_days rd
-    join public.reservations r on r.id = rd.reservation_id
-    where rd.date = new.date
-      and r.court_id = (select court_id from public.reservations where id = new.reservation_id)
-      and r.id != new.reservation_id
-      and r.status not in ('cancelled')
-      and (
-        (select start_time from public.reservations where id = new.reservation_id),
-        (select end_time from public.reservations where id = new.reservation_id)
-      ) overlaps (r.start_time, r.end_time)
-  ) then
-    raise exception 'This time slot is already booked for the selected date';
-  end if;
-  return new;
-end;
-$$ language plpgsql;
-
-drop trigger if exists check_double_booking on public.reservation_days;
-create trigger check_double_booking
-  before insert on public.reservation_days
-  for each row execute function public.prevent_double_booking();
 
 -- Auto-update updated_at
-create or replace function public.update_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
+CREATE OR REPLACE FUNCTION public.update_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
 
-drop trigger if exists reservations_updated_at on public.reservations;
-create trigger reservations_updated_at
-  before update on public.reservations
-  for each row execute function public.update_updated_at();
-
--- ============================================================
--- 6. ROW LEVEL SECURITY
--- ============================================================
-
--- Profiles
-alter table public.profiles enable row level security;
-
-drop policy if exists "Users can view own profile" on public.profiles;
-create policy "Users can view own profile" on public.profiles
-  for select using (auth.uid() = id);
-
-drop policy if exists "Users can update own profile" on public.profiles;
-create policy "Users can update own profile" on public.profiles
-  for update using (auth.uid() = id);
-
-drop policy if exists "Admins can view all profiles" on public.profiles;
-create policy "Admins can view all profiles" on public.profiles
-  for select using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
-  );
-
--- Courts (all authenticated users can view)
-alter table public.courts enable row level security;
-
-drop policy if exists "Anyone can view active courts" on public.courts;
-create policy "Anyone can view active courts" on public.courts
-  for select using (true);
-
-drop policy if exists "Admins can manage courts" on public.courts;
-create policy "Admins can manage courts" on public.courts
-  for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
-  );
-
--- Time Slot Configs
-alter table public.time_slot_configs enable row level security;
-
-drop policy if exists "Anyone can view time slot configs" on public.time_slot_configs;
-create policy "Anyone can view time slot configs" on public.time_slot_configs
-  for select using (true);
-
-drop policy if exists "Admins can manage time slot configs" on public.time_slot_configs;
-create policy "Admins can manage time slot configs" on public.time_slot_configs
-  for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
-  );
-
--- Reservations
-alter table public.reservations enable row level security;
-
-drop policy if exists "Users can view own reservations" on public.reservations;
-create policy "Users can view own reservations" on public.reservations
-  for select using (auth.uid() = user_id);
-
-drop policy if exists "Users can create reservations" on public.reservations;
-create policy "Users can create reservations" on public.reservations
-  for insert with check (auth.uid() = user_id);
-
-drop policy if exists "Users can update own reservations" on public.reservations;
-create policy "Users can update own reservations" on public.reservations
-  for update using (auth.uid() = user_id);
-
-drop policy if exists "Admins can manage all reservations" on public.reservations;
-create policy "Admins can manage all reservations" on public.reservations
-  for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
-  );
-
--- Reservation Days
-alter table public.reservation_days enable row level security;
-
-drop policy if exists "Users can view own reservation days" on public.reservation_days;
-create policy "Users can view own reservation days" on public.reservation_days
-  for select using (
-    exists (select 1 from public.reservations where id = reservation_id and user_id = auth.uid())
-  );
-
-drop policy if exists "Users can create reservation days" on public.reservation_days;
-create policy "Users can create reservation days" on public.reservation_days
-  for insert with check (
-    exists (select 1 from public.reservations where id = reservation_id and user_id = auth.uid())
-  );
-
-drop policy if exists "Admins can manage all reservation days" on public.reservation_days;
-create policy "Admins can manage all reservation days" on public.reservation_days
-  for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
-  );
+DROP TRIGGER IF EXISTS reservations_updated_at ON public.reservations;
+CREATE TRIGGER reservations_updated_at
+  BEFORE UPDATE ON public.reservations
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 -- ============================================================
--- 7. SEED DATA
+-- 6. RESERVATION DAYS
 -- ============================================================
-insert into public.courts (name, description, color, hourly_rate, sort_order) values
-  ('Main Indoor Court', 'Full-size hardwood court with professional lighting', '#8B5CF6', 500, 1),
-  ('Outdoor Street Court', 'Open-air court with concrete surface', '#F97316', 300, 2)
-on conflict do nothing;
+CREATE TABLE public.reservation_days (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  reservation_id uuid REFERENCES public.reservations(id) ON DELETE CASCADE NOT NULL,
+  date date NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
 
--- Default time slot configs for each court (Mon-Sun, 6AM-10PM, 60min slots)
-do $$
-declare
+CREATE INDEX IF NOT EXISTS idx_reservation_days_date ON public.reservation_days(date);
+CREATE INDEX IF NOT EXISTS idx_reservation_days_reservation_id ON public.reservation_days(reservation_id);
+
+-- Prevent double-booking: same court, same date, overlapping time
+CREATE OR REPLACE FUNCTION public.prevent_double_booking()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.reservation_days rd
+    JOIN public.reservations r ON r.id = rd.reservation_id
+    WHERE rd.date = NEW.date
+      AND r.court_id = (SELECT court_id FROM public.reservations WHERE id = NEW.reservation_id)
+      AND r.id != NEW.reservation_id
+      AND r.status NOT IN ('cancelled', 'no_show')
+      AND (
+        (SELECT start_time FROM public.reservations WHERE id = NEW.reservation_id),
+        (SELECT end_time FROM public.reservations WHERE id = NEW.reservation_id)
+      ) OVERLAPS (r.start_time, r.end_time)
+  ) THEN
+    RAISE EXCEPTION 'This time slot is already booked for the selected date';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS check_double_booking ON public.reservation_days;
+CREATE TRIGGER check_double_booking
+  BEFORE INSERT ON public.reservation_days
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_double_booking();
+
+-- ============================================================
+-- 7. SCHEDULE BLOCKS
+-- ============================================================
+CREATE TABLE public.schedule_blocks (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  court_id uuid REFERENCES public.courts(id) ON DELETE CASCADE NOT NULL,
+  date date NOT NULL,
+  start_time time NOT NULL,
+  end_time time NOT NULL,
+  reason text DEFAULT '',
+  block_type text NOT NULL DEFAULT 'manual_block'
+    CHECK (block_type IN ('maintenance', 'private_event', 'manual_block')),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT schedule_blocks_valid_time_range CHECK (start_time < end_time)
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_blocks_court_date ON public.schedule_blocks(court_id, date);
+
+-- ============================================================
+-- 8. ROW LEVEL SECURITY
+-- ============================================================
+
+-- PROFILES
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "profiles_select_own" ON public.profiles
+  FOR SELECT USING (auth.uid() = id OR public.is_admin());
+
+CREATE POLICY "profiles_update_own" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "profiles_insert_own" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- COURTS
+ALTER TABLE public.courts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "courts_select_all" ON public.courts
+  FOR SELECT USING (true);
+
+CREATE POLICY "courts_admin_write" ON public.courts
+  FOR ALL USING (public.is_admin());
+
+-- TIME SLOT CONFIGS
+ALTER TABLE public.time_slot_configs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "time_slot_configs_select_all" ON public.time_slot_configs
+  FOR SELECT USING (true);
+
+CREATE POLICY "time_slot_configs_admin_write" ON public.time_slot_configs
+  FOR ALL USING (public.is_admin());
+
+-- RESERVATIONS
+ALTER TABLE public.reservations ENABLE ROW LEVEL SECURITY;
+
+-- Members see their own; admins see all; guests see their own guest rows
+CREATE POLICY "reservations_select" ON public.reservations
+  FOR SELECT USING (
+    auth.uid() = user_id
+    OR public.is_admin()
+    OR (auth.uid() IS NULL AND user_id IS NULL AND COALESCE(is_guest_booking, false) = true)
+  );
+
+-- Members insert their own; guests insert with null user_id + is_guest_booking = true
+CREATE POLICY "reservations_insert" ON public.reservations
+  FOR INSERT WITH CHECK (
+    (auth.uid() IS NOT NULL AND auth.uid() = user_id AND COALESCE(is_guest_booking, false) = false)
+    OR
+    (auth.uid() IS NULL AND user_id IS NULL AND COALESCE(is_guest_booking, false) = true AND COALESCE(booking_source, 'guest') = 'guest')
+  );
+
+CREATE POLICY "reservations_update" ON public.reservations
+  FOR UPDATE USING (auth.uid() = user_id OR public.is_admin());
+
+CREATE POLICY "reservations_delete" ON public.reservations
+  FOR DELETE USING (public.is_admin());
+
+-- RESERVATION DAYS
+ALTER TABLE public.reservation_days ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "reservation_days_select" ON public.reservation_days
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.reservations r
+      WHERE r.id = reservation_id
+        AND (
+          r.user_id = auth.uid()
+          OR public.is_admin()
+          OR (auth.uid() IS NULL AND r.user_id IS NULL AND COALESCE(r.is_guest_booking, false) = true)
+        )
+    )
+  );
+
+CREATE POLICY "reservation_days_insert" ON public.reservation_days
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.reservations r
+      WHERE r.id = reservation_id
+        AND (
+          (auth.uid() IS NOT NULL AND r.user_id = auth.uid())
+          OR
+          (auth.uid() IS NULL AND r.user_id IS NULL AND COALESCE(r.is_guest_booking, false) = true)
+        )
+    )
+  );
+
+CREATE POLICY "reservation_days_admin" ON public.reservation_days
+  FOR ALL USING (public.is_admin());
+
+-- SCHEDULE BLOCKS
+ALTER TABLE public.schedule_blocks ENABLE ROW LEVEL SECURITY;
+
+-- Anyone (including anon guests) can read blocks — needed for booking wizard
+CREATE POLICY "schedule_blocks_select" ON public.schedule_blocks
+  FOR SELECT USING (true);
+
+CREATE POLICY "schedule_blocks_insert" ON public.schedule_blocks
+  FOR INSERT WITH CHECK (public.is_admin());
+
+CREATE POLICY "schedule_blocks_update" ON public.schedule_blocks
+  FOR UPDATE USING (public.is_admin());
+
+CREATE POLICY "schedule_blocks_delete" ON public.schedule_blocks
+  FOR DELETE USING (public.is_admin());
+
+-- ============================================================
+-- 9. GRANTS (anon role for guest booking)
+-- ============================================================
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT SELECT ON public.courts TO anon;
+GRANT SELECT ON public.time_slot_configs TO anon;
+GRANT SELECT ON public.schedule_blocks TO anon;
+GRANT INSERT, SELECT ON public.reservations TO anon;
+GRANT INSERT, SELECT ON public.reservation_days TO anon;
+
+-- ============================================================
+-- 10. SEED DATA
+-- ============================================================
+INSERT INTO public.courts (name, description, color, hourly_rate, sort_order) VALUES
+  ('YMCA Indoor Court', 'Full-size hardwood court with professional lighting', '#8B5CF6', 500, 1),
+  ('YMCA Outdoor Street Court', 'Open-air court with concrete surface', '#F97316', 300, 2)
+ON CONFLICT DO NOTHING;
+
+-- Default time slot configs for each court (all days, 6 AM – 10 PM, 60-min slots)
+DO $$
+DECLARE
   court_record record;
   day_num integer;
-begin
-  for court_record in select id from public.courts loop
-    for day_num in 0..6 loop
-      insert into public.time_slot_configs (court_id, day_of_week, start_time, end_time, slot_duration_minutes, is_active)
-      values (court_record.id, day_num, '06:00', '22:00', 60, true)
-      on conflict (court_id, day_of_week) do nothing;
-    end loop;
-  end loop;
-end $$;
+BEGIN
+  FOR court_record IN SELECT id FROM public.courts LOOP
+    FOR day_num IN 0..6 LOOP
+      INSERT INTO public.time_slot_configs (court_id, day_of_week, start_time, end_time, slot_duration_minutes, is_active)
+      VALUES (court_record.id, day_num, '06:00', '22:00', 60, true)
+      ON CONFLICT (court_id, day_of_week) DO NOTHING;
+    END LOOP;
+  END LOOP;
+END $$;
+
+COMMIT;

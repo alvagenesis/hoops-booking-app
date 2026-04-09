@@ -1,11 +1,14 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User, Phone, MapPin, Smartphone, Lock, ArrowLeft } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { useAuth } from '../hooks/useAuth';
 import { signupSchema, loginSchema, forgotPasswordSchema } from '../lib/validation';
+import { venueConfig } from '../lib/venueConfig';
 
 const AuthPage = () => {
+  const navigate = useNavigate();
   const [mode, setMode] = useState('login'); // 'register' | 'login' | 'forgot'
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -86,7 +89,7 @@ const AuthPage = () => {
   };
 
   const titles = {
-    register: { heading: 'Create an Account', sub: 'Join the YMCA to start booking courts' },
+    register: { heading: 'Create an Account', sub: `Join ${venueConfig.name} to start booking courts` },
     login: { heading: 'Welcome Back', sub: 'Enter your details to access your dashboard' },
     forgot: { heading: 'Reset Password', sub: 'Enter your email to receive a reset link' },
   };
@@ -107,13 +110,13 @@ const AuthPage = () => {
         <div className="hidden lg:flex absolute inset-0 flex-col justify-end p-12 lg:p-16 xl:p-24 z-10">
           <div className="relative mb-6 self-start p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            <img src="/ymca-logo.png" alt="YMCA Logo" className="relative z-10 h-16 w-auto animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
+            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="relative z-10 h-16 w-auto animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-5xl xl:text-6xl font-black text-white mb-4 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
             Elevate <br /><span className="text-blue-500">Your Game.</span>
           </h1>
           <p className="text-xl text-gray-300 max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-            Join the premier platform for discovering and booking top-tier basketball courts in your city.
+            The smarter way to manage and book sports courts — less admin, more play.
           </p>
         </div>
       </div>
@@ -123,7 +126,7 @@ const AuthPage = () => {
         <div className="w-full max-w-md xl:max-w-lg bg-[#111116]/80 backdrop-blur-2xl border border-gray-800 lg:border-none lg:bg-transparent lg:backdrop-blur-none rounded-3xl lg:rounded-none shadow-2xl shadow-blue-900/10 lg:shadow-none p-6 sm:p-8 xl:p-12 transition-all animate-in fade-in zoom-in-95 lg:zoom-in-100 lg:slide-in-from-right-8 duration-500">
 
           <div className="text-center lg:text-left mb-8">
-            <img src="/ymca-logo.png" alt="YMCA Logo" className="lg:hidden h-14 w-auto mx-auto mb-6 object-contain drop-shadow-md" />
+            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="lg:hidden h-14 w-auto mx-auto mb-6 object-contain drop-shadow-md" />
             <h2 className="text-3xl font-bold text-gray-100 tracking-tight">{titles[mode].heading}</h2>
             <p className="text-sm text-gray-400 mt-2">{titles[mode].sub}</p>
           </div>
@@ -251,6 +254,18 @@ const AuthPage = () => {
               </button>
             )}
           </p>
+
+          {mode !== 'forgot' && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => navigate('/book')}
+                className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Just need a slot? <span className="text-gray-400 font-medium">Book as Guest →</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </main>

@@ -1,11 +1,36 @@
 import { useState } from 'react';
-import { CreditCard, X } from 'lucide-react';
+import { CreditCard, X, Upload, FileImage, Info } from 'lucide-react';
 import Button from '../components/ui/Button';
 import ModalOverlay from '../components/ui/ModalOverlay';
+import { venueConfig } from '../lib/venueConfig';
+
+const DIGITAL_METHODS = ['gcash', 'maya', 'bank_transfer'];
+
+function PaymentInstructions({ method }) {
+    const cfg = venueConfig.payments[method];
+    if (!cfg) return null;
+
+    const lines = method === 'bank_transfer'
+        ? [`${cfg.bank} · ${cfg.accountNumber}`, `Account name: ${cfg.accountName}`]
+        : [`${method === 'gcash' ? 'GCash' : 'Maya'}: ${cfg.number}`, `Account name: ${cfg.accountName}`];
+
+    return (
+        <div className="flex gap-2 p-3 bg-blue-500/5 border border-blue-500/15 rounded-lg text-xs text-gray-300">
+            <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+                <p className="font-medium text-blue-300">Send payment to:</p>
+                {lines.map((line, i) => <p key={i} className="text-gray-400">{line}</p>)}
+                <p className="text-gray-500 mt-1">Include your booking date as reference when sending.</p>
+            </div>
+        </div>
+    );
+}
 
 const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
-  const [paymentType, setPaymentType] = useState('full');
+  const [paymentType, setPaymentType] = useState('partial');
   const [paymentMethod, setPaymentMethod] = useState('gcash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentProofFile, setPaymentProofFile] = useState(null);
 
   const partialAmount = Math.round(bookingInfo.totalAmount / 2);
   const amountToPay = paymentType === 'full' ? bookingInfo.totalAmount : partialAmount;
@@ -51,8 +76,10 @@ const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
           <div className="space-y-2">
             {[
               { id: 'gcash', name: 'GCash', color: 'bg-blue-600' },
-              { id: 'paymaya', name: 'Maya', color: 'bg-green-600' },
-              { id: 'stripe', name: 'Credit/Debit Card (Stripe)', color: 'bg-indigo-600' }
+              { id: 'maya', name: 'Maya', color: 'bg-green-600' },
+              { id: 'bank_transfer', name: 'Bank Transfer', color: 'bg-indigo-600' },
+              { id: 'cash', name: 'Cash', color: 'bg-amber-600' },
+              { id: 'walk_in', name: 'Walk-in', color: 'bg-slate-600' }
             ].map(method => (
               <label key={method.id} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === method.id ? 'bg-[#1a1a24] border-gray-600' : 'bg-[#14141a] border-gray-800 hover:bg-[#1a1a24]'
                 }`}>
@@ -73,14 +100,50 @@ const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
           </div>
         </div>
 
+        {DIGITAL_METHODS.includes(paymentMethod) && (
+          <PaymentInstructions method={paymentMethod} />
+        )}
+
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-gray-300">Payment Proof <span className="text-gray-500">(optional but recommended)</span></label>
+          <label className="flex items-center justify-center gap-2 border border-dashed border-gray-700 rounded-lg px-4 py-4 bg-[#14141a] hover:border-blue-500 transition-colors cursor-pointer text-sm text-gray-300">
+            <Upload className="w-4 h-4 text-blue-400" />
+            <span>{paymentProofFile ? paymentProofFile.name : 'Upload screenshot or receipt image'}</span>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          {paymentProofFile && (
+            <div className="flex items-center gap-2 text-xs text-gray-400 bg-[#101015] border border-gray-800 rounded-lg px-3 py-2">
+              <FileImage className="w-3.5 h-3.5" /> {paymentProofFile.name}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-300">Payment Notes <span className="text-gray-500">(optional)</span></label>
+          <textarea
+            value={paymentNotes}
+            onChange={(e) => setPaymentNotes(e.target.value)}
+            rows={3}
+            placeholder="Reference number, who received payment, or payment instructions..."
+            className="w-full bg-[#14141a] border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+          />
+        </div>
+
         <div className="pt-4 flex gap-3">
           <Button variant="ghost" onClick={onClose} className="flex-1">Back</Button>
           <Button
             className="flex-1"
             onClick={() => onConfirm({
-              paymentStatus: paymentType,
+              paymentStatus: paymentProofFile ? 'for_verification' : (paymentType === 'full' ? 'paid' : 'partial'),
               paidAmount: amountToPay,
               paymentMethod,
+              paymentNotes,
+              paymentProofFile,
             })}
           >
             Pay ₱{amountToPay.toLocaleString()}

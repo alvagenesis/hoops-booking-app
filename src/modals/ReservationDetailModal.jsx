@@ -1,16 +1,15 @@
-import { CalendarIcon, MapPin, X, User, Clock, Trash2 } from 'lucide-react';
+import { CalendarIcon, MapPin, X, User, Clock, Trash2, CheckCircle2, AlertTriangle, Wallet, Ban } from 'lucide-react';
 import Button from '../components/ui/Button';
 import ModalOverlay from '../components/ui/ModalOverlay';
 import { formatDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 
-const ReservationDetailModal = ({ reservation, onClose, onCancel }) => {
+const ReservationDetailModal = ({ reservation, onClose, onCancel, onAdminUpdate }) => {
     const { role, user } = useAuth();
     const isAdmin = role === 'admin';
     const isOwner = user?.id === reservation.user_id;
 
-    const start = reservation.start_date ? new Date(reservation.start_date) : reservation.start;
-    const end = reservation.end_date ? new Date(reservation.end_date) : reservation.end;
+    const { start, end } = getReservationDateRange(reservation);
     const court = reservation.courts;
 
     return (
@@ -27,12 +26,11 @@ const ReservationDetailModal = ({ reservation, onClose, onCancel }) => {
                     <div>
                         <h4 className="text-2xl font-bold text-gray-100">{reservation.title || 'Court Booking'}</h4>
                         <div className="flex items-center gap-2 mt-2 text-sm text-gray-400">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${reservation.status === 'confirmed' ? 'bg-green-500/10 text-green-400' : 'bg-orange-500/10 text-orange-400'
-                                }`}>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${statusBadgeStyles(reservation.status)}`}>
                                 {reservation.status}
                             </span>
                             <span>•</span>
-                            <span className="capitalize">{reservation.payment_status || 'Pending'} Payment</span>
+                            <span className="capitalize">{reservation.payment_status || 'unpaid'} Payment</span>
                         </div>
                     </div>
 
@@ -42,8 +40,8 @@ const ReservationDetailModal = ({ reservation, onClose, onCancel }) => {
                             <div>
                                 <p className="text-xs text-gray-500">Date & Duration</p>
                                 <p className="text-sm text-gray-200 mt-0.5">
-                                    {formatDate(start)}
-                                    {start.getTime() !== end.getTime() && ` — ${formatDate(end)}`}
+                                    {start ? formatDate(start) : 'Date pending'}
+                                    {start && end && start.getTime() !== end.getTime() && ` — ${formatDate(end)}`}
                                 </p>
                             </div>
                         </div>
@@ -62,8 +60,8 @@ const ReservationDetailModal = ({ reservation, onClose, onCancel }) => {
                             <User className="w-5 h-5 text-blue-400 mt-0.5" />
                             <div>
                                 <p className="text-xs text-blue-400/70 font-medium">Customer Information (Admin Only)</p>
-                                <p className="text-sm text-gray-200 mt-0.5">User ID: {reservation.user_id.slice(0, 8)}...</p>
-                                <p className="text-xs text-gray-500 mt-0.5">Click to view profile (coming soon)</p>
+                                <p className="text-sm text-gray-200 mt-0.5">{reservation.customer_name || (reservation.user_id ? `User ID: ${reservation.user_id.slice(0, 8)}...` : 'Guest booking')}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{reservation.customer_email || reservation.customer_phone || 'No customer contact saved yet'}</p>
                             </div>
                         </div>
                     )}
@@ -78,7 +76,44 @@ const ReservationDetailModal = ({ reservation, onClose, onCancel }) => {
                         <span className="text-gray-500">Paid Amount</span>
                         <span className="text-green-500">₱{reservation.paid_amount?.toLocaleString() || '0'}</span>
                     </div>
+                    {reservation.payment_notes && (
+                        <div className="pt-2">
+                            <p className="text-xs text-gray-500 uppercase tracking-wider">Payment Notes</p>
+                            <p className="text-sm text-gray-300 mt-1">{reservation.payment_notes}</p>
+                        </div>
+                    )}
+                    {reservation.payment_proof_url && (
+                        <div className="pt-2">
+                            <p className="text-xs text-gray-500 uppercase tracking-wider">Payment Proof</p>
+                            <a href={reservation.payment_proof_url} target="_blank" rel="noreferrer" className="text-sm text-blue-400 hover:text-blue-300 mt-1 inline-block">
+                                View uploaded proof
+                            </a>
+                        </div>
+                    )}
                 </div>
+
+                {isAdmin && onAdminUpdate && (
+                    <div className="bg-[#16161c] border border-gray-800 rounded-xl p-4 space-y-3">
+                        <h5 className="text-sm font-semibold text-gray-200">Admin Actions</h5>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Button variant="secondary" className="gap-2" onClick={() => onAdminUpdate(reservation.id, { status: 'confirmed', confirmed_at: new Date().toISOString() })}>
+                                <CheckCircle2 className="w-4 h-4" /> Confirm Booking
+                            </Button>
+                            <Button variant="secondary" className="gap-2" onClick={() => onAdminUpdate(reservation.id, { payment_status: 'paid', paid_amount: reservation.total_amount, status: 'confirmed', confirmed_at: new Date().toISOString() })}>
+                                <Wallet className="w-4 h-4" /> Mark Fully Paid
+                            </Button>
+                            <Button variant="secondary" className="gap-2" onClick={() => onAdminUpdate(reservation.id, { payment_status: 'rejected', status: 'awaiting_payment' })}>
+                                <AlertTriangle className="w-4 h-4" /> Reject Payment
+                            </Button>
+                            <Button variant="secondary" className="gap-2" onClick={() => onAdminUpdate(reservation.id, { status: 'completed' })}>
+                                <CheckCircle2 className="w-4 h-4" /> Mark Completed
+                            </Button>
+                            <Button variant="secondary" className="gap-2" onClick={() => onAdminUpdate(reservation.id, { status: 'no_show' })}>
+                                <Ban className="w-4 h-4" /> Mark No-show
+                            </Button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex justify-between gap-3 pt-2">
                     {(isAdmin || isOwner) && reservation.status !== 'cancelled' && (
@@ -98,5 +133,44 @@ const ReservationDetailModal = ({ reservation, onClose, onCancel }) => {
         </ModalOverlay>
     );
 };
+
+function getReservationDateRange(reservation) {
+    if (reservation?.reservation_days?.length) {
+        const sortedDates = reservation.reservation_days
+            .map(day => new Date(`${day.date}T00:00:00`))
+            .filter(date => !Number.isNaN(date.getTime()))
+            .sort((a, b) => a - b);
+
+        return {
+            start: sortedDates[0] || null,
+            end: sortedDates[sortedDates.length - 1] || sortedDates[0] || null,
+        };
+    }
+
+    const start = reservation?.start_date ? new Date(reservation.start_date) : (reservation?.start ? new Date(reservation.start) : null);
+    const end = reservation?.end_date ? new Date(reservation.end_date) : (reservation?.end ? new Date(reservation.end) : start);
+
+    return {
+        start: start && !Number.isNaN(start.getTime()) ? start : null,
+        end: end && !Number.isNaN(end.getTime()) ? end : (start && !Number.isNaN(start.getTime()) ? start : null),
+    };
+}
+
+function statusBadgeStyles(status) {
+    switch (status) {
+        case 'confirmed':
+            return 'bg-green-500/10 text-green-400';
+        case 'awaiting_payment':
+            return 'bg-orange-500/10 text-orange-400';
+        case 'completed':
+            return 'bg-blue-500/10 text-blue-400';
+        case 'cancelled':
+            return 'bg-red-500/10 text-red-400';
+        case 'no_show':
+            return 'bg-slate-500/10 text-slate-400';
+        default:
+            return 'bg-yellow-500/10 text-yellow-400';
+    }
+}
 
 export default ReservationDetailModal;

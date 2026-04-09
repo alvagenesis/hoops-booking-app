@@ -1,4 +1,5 @@
 // Mock data matching the new schema for demo mode
+import { formatLocalDate } from './utils';
 
 export const MOCK_COURTS = [
   { id: 'c1', name: 'Main Indoor Court', description: 'Full-size hardwood court with professional lighting', color: '#3B82F6', hourly_rate: 500, is_active: true, sort_order: 1 },
@@ -24,23 +25,41 @@ tomorrow.setDate(today.getDate() + 1);
 const nextWeek = new Date(today);
 nextWeek.setDate(today.getDate() + 7);
 
+export const MOCK_SCHEDULE_BLOCKS = [
+  {
+    id: 'sb1',
+    court_id: 'c1',
+    date: formatLocalDate(today),
+    start_time: '12:00',
+    end_time: '13:00',
+    reason: 'Cleaning and maintenance',
+    block_type: 'maintenance',
+  },
+];
+
 export const INITIAL_RESERVATIONS = [
   {
     id: 'r1', court_id: 'c1', user_id: 'demo', title: 'Weekend Tournament',
     notes: 'Bring jerseys', start_time: '09:00', end_time: '11:00',
-    status: 'confirmed', total_amount: 1000, created_at: new Date().toISOString(),
+    status: 'confirmed', total_amount: 1000, paid_amount: 1000, payment_status: 'paid', payment_method: 'cash',
+    customer_name: 'John Doe', customer_phone: '09171234567', customer_email: 'john@example.com',
+    booking_source: 'member', is_guest_booking: false,
+    created_at: new Date().toISOString(),
     reservation_days: [
-      { id: 'rd1', reservation_id: 'r1', date: tomorrow.toISOString().split('T')[0] },
-      { id: 'rd2', reservation_id: 'r1', date: nextWeek.toISOString().split('T')[0] },
+      { id: 'rd1', reservation_id: 'r1', date: formatLocalDate(tomorrow) },
+      { id: 'rd2', reservation_id: 'r1', date: formatLocalDate(nextWeek) },
     ],
     courts: MOCK_COURTS[0],
   },
   {
-    id: 'r2', court_id: 'c2', user_id: 'demo', title: 'Evening Pickup Game',
+    id: 'r2', court_id: 'c2', user_id: null, title: 'Evening Pickup Game',
     notes: '', start_time: '17:00', end_time: '18:00',
-    status: 'confirmed', total_amount: 300, created_at: new Date().toISOString(),
+    status: 'awaiting_payment', total_amount: 300, paid_amount: 150, payment_status: 'partial', payment_method: 'gcash',
+    customer_name: 'Walk-in Player', customer_phone: '09981234567', customer_email: 'walkin@example.com',
+    booking_source: 'guest', is_guest_booking: true,
+    created_at: new Date().toISOString(),
     reservation_days: [
-      { id: 'rd3', reservation_id: 'r2', date: today.toISOString().split('T')[0] },
+      { id: 'rd3', reservation_id: 'r2', date: formatLocalDate(today) },
     ],
     courts: MOCK_COURTS[1],
   },

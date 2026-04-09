@@ -32,11 +32,11 @@ const MyBookingsPage = () => {
         setCancelling(null);
     };
 
-    const handleConfirmPayment = async ({ paidAmount, paymentMethod }) => {
+    const handleConfirmPayment = async ({ paidAmount, paymentMethod, paymentNotes, paymentProofFile }) => {
         if (!pendingPaymentRes) return;
         setIsPaying(true);
         try {
-            await payReservation(pendingPaymentRes.id, paidAmount, paymentMethod);
+            await payReservation(pendingPaymentRes.id, paidAmount, paymentMethod, { paymentNotes, paymentProofFile });
             setPendingPaymentRes(null);
             setDetailId(null);
         } catch (err) {
@@ -148,15 +148,15 @@ const MyBookingsPage = () => {
                                         <p className="text-sm font-bold text-gray-100">₱{(res.total_amount || 0).toLocaleString()}</p>
                                     </div>
                                 </div>
-                                {(res.status === 'pending' || res.status === 'confirmed') && activeTab === 'upcoming' && (
+                                {(res.status === 'pending' || res.status === 'confirmed' || res.status === 'awaiting_payment') && activeTab === 'upcoming' && (
                                     <div className="mt-3 pt-3 border-t border-gray-800 flex justify-between items-center">
                                         <div className="text-[10px] text-gray-500">
-                                            {res.payment_status !== 'full' && (
+                                            {res.payment_status !== 'paid' && (
                                                 <span>Balance: ₱{((res.total_amount || 0) - (res.paid_amount || 0)).toLocaleString()}</span>
                                             )}
                                         </div>
                                         <div className="flex gap-3">
-                                            {res.payment_status !== 'full' && (
+                                            {res.payment_status !== 'paid' && (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setPendingPaymentRes(res); }}
                                                     className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors flex items-center gap-1"
@@ -232,6 +232,10 @@ function DetailSheet({ reservation, onClose, onCancel, onPay, cancelling }) {
                 <div className="space-y-3">
                     <InfoRow icon={Clock} label="Time" value={`${reservation.start_time} – ${reservation.end_time}`} />
                     <InfoRow icon={Calendar} label="Status"><StatusBadge status={reservation.status} /></InfoRow>
+                    <InfoRow icon={DollarSign} label="Payment"><PaymentBadge status={reservation.payment_status} /></InfoRow>
+                    {reservation.customer_name && <InfoRow icon={MapPin} label="Booked By" value={reservation.customer_name} />}
+                    {reservation.customer_phone && <InfoRow icon={MapPin} label="Phone" value={reservation.customer_phone} />}
+                    {reservation.customer_email && <InfoRow icon={MapPin} label="Email" value={reservation.customer_email} />}
                     <div>
                         <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Dates</p>
                         <div className="space-y-1">
@@ -243,6 +247,15 @@ function DetailSheet({ reservation, onClose, onCancel, onPay, cancelling }) {
                         </div>
                     </div>
                     {reservation.notes && <InfoRow icon={MapPin} label="Notes" value={reservation.notes} />}
+                    {reservation.payment_notes && <InfoRow icon={CreditCard} label="Payment" value={reservation.payment_notes} />}
+                    {reservation.payment_proof_url && (
+                        <div className="text-sm">
+                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Payment Proof</p>
+                            <a href={reservation.payment_proof_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300">
+                                View uploaded proof
+                            </a>
+                        </div>
+                    )}
                     <div className="border-t border-gray-800 pt-3 space-y-2">
                         <div className="flex justify-between text-sm">
                             <span className="text-gray-400">Total Amount</span>
@@ -260,7 +273,7 @@ function DetailSheet({ reservation, onClose, onCancel, onPay, cancelling }) {
                 </div>
 
                 <div className="pt-4 space-y-3">
-                    {reservation.payment_status !== 'full' && (reservation.status === 'pending' || reservation.status === 'confirmed') && (
+                    {reservation.payment_status !== 'paid' && (reservation.status === 'pending' || reservation.status === 'confirmed' || reservation.status === 'awaiting_payment') && (
                         <Button
                             onClick={onPay}
                             className="w-full gap-2"
@@ -268,7 +281,7 @@ function DetailSheet({ reservation, onClose, onCancel, onPay, cancelling }) {
                             <CreditCard className="w-4 h-4" /> Pay Balance
                         </Button>
                     )}
-                    {(reservation.status === 'pending' || reservation.status === 'confirmed') && (
+                    {(reservation.status === 'pending' || reservation.status === 'confirmed' || reservation.status === 'awaiting_payment') && (
                         <button
                             onClick={() => onCancel(reservation.id)}
                             disabled={cancelling === reservation.id}
@@ -297,9 +310,11 @@ function InfoRow({ icon: Icon, label, value, children }) {
 function PaymentBadge({ status }) {
     if (!status) return null;
     const styles = {
-        pending: 'bg-red-500/10 text-red-400 border-red-500/20',
+        unpaid: 'bg-red-500/10 text-red-400 border-red-500/20',
         partial: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-        full: 'bg-green-500/10 text-green-400 border-green-500/20',
+        for_verification: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+        paid: 'bg-green-500/10 text-green-400 border-green-500/20',
+        rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
     };
     return (
         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight border ${styles[status]}`}>
@@ -311,9 +326,11 @@ function PaymentBadge({ status }) {
 function StatusBadge({ status }) {
     const styles = {
         pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+        awaiting_payment: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
         confirmed: 'bg-green-500/10 text-green-400 border-green-500/20',
         completed: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
         cancelled: 'bg-red-500/10 text-red-400 border-red-500/20',
+        no_show: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
     };
     return (
         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${styles[status] || styles.pending}`}>
@@ -324,9 +341,20 @@ function StatusBadge({ status }) {
 
 function isUpcoming(res, now) {
     const dates = res.reservation_days || [];
-    if (dates.length === 0) return true;
-    const lastDate = new Date(dates[dates.length - 1]?.date + 'T23:59:59');
-    return lastDate >= now;
+    if (dates.length > 0) {
+        const lastDate = new Date(`${dates[dates.length - 1]?.date}T23:59:59`);
+        return !Number.isNaN(lastDate.getTime()) ? lastDate >= now : true;
+    }
+
+    const fallbackStart = res.start_date ? new Date(`${res.start_date}T23:59:59`) : null;
+    const fallbackEnd = res.end_date ? new Date(`${res.end_date}T23:59:59`) : fallbackStart;
+    const compareDate = fallbackEnd && !Number.isNaN(fallbackEnd.getTime()) ? fallbackEnd : fallbackStart;
+
+    if (compareDate && !Number.isNaN(compareDate.getTime())) {
+        return compareDate >= now;
+    }
+
+    return true;
 }
 
 export default MyBookingsPage;

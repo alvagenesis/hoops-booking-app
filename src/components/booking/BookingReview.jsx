@@ -1,22 +1,32 @@
 import { useState } from 'react';
-import { Calendar, Clock, MapPin, FileText, CreditCard } from 'lucide-react';
+import { Calendar, Clock, FileText, CreditCard, User, Mail, Phone } from 'lucide-react';
+import { formatLocalDate } from '../../lib/utils';
 import Button from '../ui/Button';
 import PaymentModal from '../../modals/PaymentModal';
 
-const BookingReview = ({ court, dates, timeSlot, onConfirm, loading }) => {
+const BookingReview = ({ court, dates, timeSlots, onConfirm, loading, isGuest }) => {
     const [title, setTitle] = useState('');
     const [notes, setNotes] = useState('');
     const [showPayment, setShowPayment] = useState(false);
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [customerEmail, setCustomerEmail] = useState('');
+    const [touched, setTouched] = useState(false);
+    const customerEmailLooksValid = !customerEmail || /.+@.+\..+/.test(customerEmail);
 
     // Calculate totals
     const dateList = getDatesInRange(dates.from, dates.to || dates.from);
     const totalDays = dateList.length;
-    const [startH] = timeSlot.start.split(':').map(Number);
-    const [endH] = timeSlot.end.split(':').map(Number);
-    const hoursPerDay = endH - startH;
+    const firstSlot = timeSlots[0];
+    const lastSlot = timeSlots[timeSlots.length - 1];
+    const [startH, startM = 0] = firstSlot.start.split(':').map(Number);
+    const [endH, endM = 0] = lastSlot.end.split(':').map(Number);
+    const hoursPerDay = (endH * 60 + endM - startH * 60 - startM) / 60;
     const totalAmount = court.hourly_rate * hoursPerDay * totalDays;
 
     const handleConfirm = () => {
+        setTouched(true);
+        if (!customerName.trim() || !customerPhone.trim() || !customerEmailLooksValid) return;
         setShowPayment(true);
     };
 
@@ -26,6 +36,9 @@ const BookingReview = ({ court, dates, timeSlot, onConfirm, loading }) => {
             notes,
             totalAmount,
             dates: dateList,
+            customerName,
+            customerPhone,
+            customerEmail,
             ...paymentInfo
         });
         setShowPayment(false);
@@ -37,6 +50,15 @@ const BookingReview = ({ court, dates, timeSlot, onConfirm, loading }) => {
                 <h3 className="text-lg font-semibold text-gray-100 mb-1">Review & Confirm</h3>
                 <p className="text-sm text-gray-500">Check your booking details before confirming</p>
             </div>
+
+            {isGuest && (
+                <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4 text-sm text-gray-300">
+                    <p className="font-medium text-blue-300">Public / guest-friendly booking path</p>
+                    <p className="mt-1 text-xs text-gray-400">
+                        Use your real contact details here. Staff may use them to verify payment, confirm the booking, or follow up if there are schedule changes.
+                    </p>
+                </div>
+            )}
 
             {/* Summary Card */}
             <div className="bg-[#16161c] border border-gray-800 rounded-xl p-5 space-y-4">
@@ -62,7 +84,7 @@ const BookingReview = ({ court, dates, timeSlot, onConfirm, loading }) => {
                     <div className="flex items-center gap-2 text-gray-400">
                         <Clock className="w-4 h-4 text-gray-500" />
                         <div>
-                            <p className="text-gray-300">{timeSlot.label}</p>
+                            <p className="text-gray-300">{firstSlot.label.split('–')[0].trim()} – {lastSlot.label.split('–')[1]?.trim() ?? lastSlot.end}</p>
                             <p className="text-xs text-gray-500">{hoursPerDay}h per day</p>
                         </div>
                     </div>
@@ -73,6 +95,57 @@ const BookingReview = ({ court, dates, timeSlot, onConfirm, loading }) => {
                     <div className="text-right">
                         <p className="text-xl font-bold text-gray-100">₱{totalAmount.toLocaleString()}</p>
                         <p className="text-xs text-gray-500">₱{court.hourly_rate} × {hoursPerDay}h × {totalDays} day{totalDays > 1 ? 's' : ''}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Customer details */}
+            <div className="space-y-3">
+                <div>
+                    <label className="text-sm font-medium text-gray-400 mb-1.5 block">
+                        <User className="w-3.5 h-3.5 inline mr-1" />
+                        Customer Name
+                    </label>
+                    <input
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Full name"
+                        className={`w-full bg-[#111116] border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors ${touched && !customerName.trim() ? 'border-red-500/50' : 'border-gray-800'}`}
+                    />
+                    {touched && !customerName.trim() && (
+                        <p className="text-xs text-red-400 mt-1">Name is required.</p>
+                    )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label className="text-sm font-medium text-gray-400 mb-1.5 block">
+                            <Phone className="w-3.5 h-3.5 inline mr-1" />
+                            Phone Number
+                        </label>
+                        <input
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                            placeholder="09XXXXXXXXX"
+                            className={`w-full bg-[#111116] border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors ${touched && !customerPhone.trim() ? 'border-red-500/50' : 'border-gray-800'}`}
+                        />
+                        {touched && !customerPhone.trim() && (
+                            <p className="text-xs text-red-400 mt-1">Phone is required.</p>
+                        )}
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-gray-400 mb-1.5 block">
+                            <Mail className="w-3.5 h-3.5 inline mr-1" />
+                            Email Address
+                        </label>
+                        <input
+                            value={customerEmail}
+                            onChange={(e) => setCustomerEmail(e.target.value)}
+                            placeholder="name@example.com"
+                            className={`w-full bg-[#111116] border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors ${customerEmailLooksValid ? 'border-gray-800' : 'border-red-500/50'}`}
+                        />
+                        {!customerEmailLooksValid && (
+                            <p className="text-xs text-red-400 mt-1">Please enter a valid email address or leave it blank.</p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -123,7 +196,7 @@ function getDatesInRange(start, end) {
     const current = new Date(start);
     const last = new Date(end);
     while (current <= last) {
-        dates.push(current.toISOString().split('T')[0]);
+        dates.push(formatLocalDate(current));
         current.setDate(current.getDate() + 1);
     }
     return dates;

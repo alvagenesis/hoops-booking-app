@@ -32,6 +32,8 @@ import MyBookingsPage from './pages/MyBookingsPage';
 import CourtsPage from './pages/CourtsPage';
 import SchedulePage from './pages/SchedulePage';
 import TransactionsPage from './pages/TransactionsPage';
+import BookingSuccessPage from './pages/BookingSuccessPage';
+import { venueConfig } from './lib/venueConfig';
 
 function AppLayout() {
   const { displayName, role, profile, signOut } = useAuth();
@@ -73,7 +75,7 @@ function AppLayout() {
       <aside aria-label="Main navigation" className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#111116] border-r border-gray-800 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
           <div className="flex items-center gap-2">
-            <img src="/ymca-logo.png" alt="YMCA Logo" className="h-8 w-auto object-contain drop-shadow-sm" />
+            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="h-8 w-auto object-contain drop-shadow-sm" />
           </div>
           <button aria-label="Close sidebar" className="lg:hidden text-gray-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
             <X className="w-5 h-5" />
@@ -168,11 +170,17 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={!user ? <AuthPage /> : <Navigate to="/dashboard" />} />
+
+      {/* Public routes — show AppLayout when logged in, standalone when guest */}
+      <Route element={user ? <AppLayout /> : <Outlet />}>
+        <Route path="/book" element={<BookingPage />} />
+        <Route path="/booking-success" element={<BookingSuccessPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+      </Route>
+
       <Route element={user ? <AppLayout /> : <Navigate to="/login" />}>
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/book" element={<BookingPage />} />
         <Route path="/my-bookings" element={<MyBookingsPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
 
         {/* Admin only routes */}
         <Route path="/members" element={isAdmin ? <MembersPage /> : <Navigate to="/dashboard" />} />
@@ -181,9 +189,10 @@ export default function App() {
         <Route path="/transactions" element={isAdmin ? <TransactionsPage /> : <Navigate to="/dashboard" />} />
 
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/" element={<Navigate to="/dashboard" />} />
-        <Route path="*" element={<Navigate to="/dashboard" />} />
       </Route>
+
+      <Route path="/" element={<Navigate to={user ? '/dashboard' : '/book'} />} />
+      <Route path="*" element={<Navigate to={user ? '/dashboard' : '/book'} />} />
     </Routes>
   );
 }
