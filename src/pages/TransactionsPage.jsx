@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useState } from 'react';
 import { CreditCard, Download, Search, TrendingUp, DollarSign, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { venueConfig } from '../lib/venueConfig';
 import { useReservations } from '../hooks/useReservations';
 import { formatDate, formatLocalDate } from '../lib/utils';
 import Button from '../components/ui/Button';
@@ -71,7 +72,7 @@ const TransactionsPage = () => {
 
     const handleExport = useCallback(() => {
         const today = formatLocalDate(new Date());
-        exportToCsv(transactions, `ymca-transactions-${today}.csv`);
+        exportToCsv(transactions, `${venueConfig.name.toLowerCase().replace(/\s+/g, '-')}-transactions-${today}.csv`);
     }, [transactions]);
 
     if (loading) {

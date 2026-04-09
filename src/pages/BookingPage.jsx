@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { venueConfig } from '../lib/venueConfig';
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import Button from '../components/ui/Button';
 import CourtSelection from '../components/booking/CourtSelection';
@@ -116,7 +117,7 @@ const BookingPage = () => {
                 <div className="border-b border-gray-800 bg-[#111116]">
                     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 min-w-0">
-                            <img src="/ymca-logo.png" alt="YMCA Logo" className="h-10 w-auto object-contain" />
+                            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="h-10 w-auto object-contain" />
                             <div className="min-w-0">
                                 <p className="text-sm font-semibold text-gray-100 truncate">Public Court Booking</p>
                                 <p className="text-xs text-gray-500 truncate">Reserve a slot without signing in</p>

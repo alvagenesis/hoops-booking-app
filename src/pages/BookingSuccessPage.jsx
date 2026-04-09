@@ -31,7 +31,13 @@ const BookingSuccessPage = () => {
 
     if (!state?.booking) return null;
 
-    const { booking, court, dates, slot } = state;
+    const { booking, court, dates, slots } = state;
+    const firstSlot = Array.isArray(slots) ? slots[0] : slots;
+    const lastSlot = Array.isArray(slots) ? slots[slots.length - 1] : slots;
+    const timeLabel = firstSlot && lastSlot
+        ? `${firstSlot.label?.split('–')[0]?.trim()} – ${lastSlot.label?.split('–')[1]?.trim() ?? lastSlot.end}`
+        : firstSlot?.label;
+    const refNumber = booking.id ? booking.id.slice(0, 8).toUpperCase() : null;
     const paymentMeta = PAYMENT_STATUS_META[booking.payment_status] ?? PAYMENT_STATUS_META.unpaid;
 
     return (
@@ -67,10 +73,10 @@ const BookingSuccessPage = () => {
                                 {dates.length > 1 && <span className="text-gray-600">({dates.length} days)</span>}
                             </div>
                         )}
-                        {slot?.label && (
+                        {timeLabel && (
                             <div className="flex items-center gap-2 text-gray-400">
                                 <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                <span>{slot.label}</span>
+                                <span>{timeLabel}</span>
                             </div>
                         )}
                         <div className="flex items-center gap-2 text-gray-400">
@@ -106,11 +112,22 @@ const BookingSuccessPage = () => {
                     </div>
                 )}
 
+                {/* Booking reference */}
+                {refNumber && (
+                    <div className="bg-[#111116] border border-gray-800 rounded-xl p-4 flex items-center justify-between">
+                        <div>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-0.5">Booking Reference</p>
+                            <p className="text-lg font-mono font-bold text-gray-100 tracking-widest">{refNumber}</p>
+                        </div>
+                        <p className="text-xs text-gray-600 text-right max-w-[140px]">Use this to check your booking status later</p>
+                    </div>
+                )}
+
                 {/* Next steps */}
                 <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4">
                     <p className="text-sm font-medium text-blue-300 mb-1">What happens next?</p>
                     <p className="text-xs text-gray-400 leading-relaxed">
-                        Staff will review your booking and reach out to confirm. If payment is still pending, expect a follow-up at the contact above. Keep this page as your reference until you receive confirmation.
+                        Staff will review your booking and reach out to confirm. If payment is still pending, expect a follow-up at the contact above. Save your reference number above to check your booking status anytime.
                     </p>
                 </div>
 
@@ -118,6 +135,9 @@ const BookingSuccessPage = () => {
                 <div className="flex flex-col gap-3">
                     <Button onClick={() => navigate('/book')} className="w-full gap-2">
                         Book Another Slot <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" onClick={() => navigate('/my-booking')} className="w-full text-blue-400 hover:text-blue-300">
+                        Check Booking Status
                     </Button>
                     <Button variant="ghost" onClick={() => navigate('/calendar')} className="w-full text-gray-400">
                         Back to Calendar

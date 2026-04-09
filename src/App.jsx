@@ -33,6 +33,7 @@ import CourtsPage from './pages/CourtsPage';
 import SchedulePage from './pages/SchedulePage';
 import TransactionsPage from './pages/TransactionsPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
+import MyBookingPage from './pages/MyBookingPage';
 import { venueConfig } from './lib/venueConfig';
 
 function AppLayout() {
@@ -175,6 +176,7 @@ export default function App() {
       <Route element={user ? <AppLayout /> : <Outlet />}>
         <Route path="/book" element={<BookingPage />} />
         <Route path="/booking-success" element={<BookingSuccessPage />} />
+        <Route path="/my-booking" element={<MyBookingPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
       </Route>
 
