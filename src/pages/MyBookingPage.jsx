@@ -54,22 +54,25 @@ const MyBookingPage = () => {
         setLoading(true);
 
         try {
-            // Find reservations whose ID starts with the ref prefix and phone matches
+            // Fetch all guest bookings matching the phone number, then filter by ref prefix client-side
+            // (UUID ilike is not supported in PostgREST without a cast — avoid it)
             const { data, error: fetchError } = await supabase
                 .from('reservations')
                 .select('*, courts(*), reservation_days(*)')
-                .ilike('id', `${ref}%`)
                 .eq('customer_phone', ph)
                 .eq('is_guest_booking', true)
-                .limit(1)
-                .maybeSingle();
+                .order('created_at', { ascending: false });
 
             if (fetchError) throw fetchError;
 
-            if (!data) {
+            const match = (data || []).find(r =>
+                r.id.replace(/-/g, '').slice(0, 8).toUpperCase() === ref.replace(/-/g, '')
+            );
+
+            if (!match) {
                 setError('No booking found. Please check your reference number and phone number.');
             } else {
-                setBooking(data);
+                setBooking(match);
             }
         } catch (err) {
             setError('Something went wrong. Please try again.');
@@ -149,7 +152,7 @@ const MyBookingPage = () => {
                         {/* Status badge */}
                         <div className={`flex items-center justify-between px-4 py-3 rounded-xl border ${statusMeta.bg}`}>
                             <span className={`text-sm font-semibold ${statusMeta.color}`}>{statusMeta.text}</span>
-                            <span className="text-xs text-gray-500 font-mono">{booking.id.slice(0, 8).toUpperCase()}</span>
+                            <span className="text-xs text-gray-500 font-mono">{booking.id.replace(/-/g, '').slice(0, 8).toUpperCase()}</span>
                         </div>
 
                         {/* Booking details */}

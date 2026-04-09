@@ -37,7 +37,7 @@ const BookingSuccessPage = () => {
     const timeLabel = firstSlot && lastSlot
         ? `${firstSlot.label?.split('–')[0]?.trim()} – ${lastSlot.label?.split('–')[1]?.trim() ?? lastSlot.end}`
         : firstSlot?.label;
-    const refNumber = booking.id ? booking.id.slice(0, 8).toUpperCase() : null;
+    const refNumber = booking.id ? booking.id.replace(/-/g, '').slice(0, 8).toUpperCase() : null;
     const paymentMeta = PAYMENT_STATUS_META[booking.payment_status] ?? PAYMENT_STATUS_META.unpaid;
 
     return (
