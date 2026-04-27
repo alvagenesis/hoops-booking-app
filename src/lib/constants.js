@@ -37,11 +37,20 @@ export const MOCK_SCHEDULE_BLOCKS = [
   },
 ];
 
+export const MOCK_AMENITIES = [
+  { id: 'a1', name: 'Scoreboard',            description: 'Electronic scoreboard display',       price: 200, icon: 'monitor',     is_active: true, sort_order: 1 },
+  { id: 'a2', name: 'Electric Fan',          description: 'Industrial-grade electric fan',       price: 150, icon: 'wind',        is_active: true, sort_order: 2 },
+  { id: 'a3', name: 'Aircon',                description: 'Full air-conditioning for the court', price: 500, icon: 'thermometer', is_active: true, sort_order: 3 },
+  { id: 'a4', name: 'Lights',                description: 'Professional court lighting',         price: 100, icon: 'lamp',        is_active: true, sort_order: 4 },
+  { id: 'a5', name: 'Projector',             description: 'Overhead projector + screen',         price: 400, icon: 'projector',   is_active: true, sort_order: 5 },
+  { id: 'a6', name: 'Drinking Water Supply', description: 'Unlimited water dispenser station',   price: 100, icon: 'droplets',    is_active: true, sort_order: 6 },
+];
+
 export const INITIAL_RESERVATIONS = [
   {
     id: 'r1', court_id: 'c1', user_id: 'demo', title: 'Weekend Tournament',
     notes: 'Bring jerseys', start_time: '09:00', end_time: '11:00',
-    status: 'confirmed', total_amount: 1000, paid_amount: 1000, payment_status: 'paid', payment_method: 'cash',
+    status: 'confirmed', total_amount: 1000, paid_amount: 1000, payment_status: 'paid', payment_review_status: 'approved', pending_payment_amount: 0, payment_method: 'cash',
     customer_name: 'John Doe', customer_phone: '09171234567', customer_email: 'john@example.com',
     booking_source: 'member', is_guest_booking: false,
     created_at: new Date().toISOString(),
@@ -49,17 +58,29 @@ export const INITIAL_RESERVATIONS = [
       { id: 'rd1', reservation_id: 'r1', date: formatLocalDate(tomorrow) },
       { id: 'rd2', reservation_id: 'r1', date: formatLocalDate(nextWeek) },
     ],
+    booking_logs: [
+      { id: 'bl1', reservation_id: 'r1', event_type: 'booking_created', title: 'Booking created', description: 'Booking was created and the selected slot is now reserved.', created_at: new Date(today.getTime() - 1000 * 60 * 90).toISOString() },
+      { id: 'bl2', reservation_id: 'r1', event_type: 'payment_reviewed', title: 'Payment reviewed', description: 'The latest submitted payment was approved.', created_at: new Date(today.getTime() - 1000 * 60 * 70).toISOString() },
+      { id: 'bl3', reservation_id: 'r1', event_type: 'booking_confirmed', title: 'Booking confirmed', description: 'Booking was confirmed and is ready for the scheduled date.', created_at: new Date(today.getTime() - 1000 * 60 * 65).toISOString() },
+      { id: 'bl4', reservation_id: 'r1', event_type: 'fully_paid', title: 'Fully paid', description: 'The booking is now fully paid.', created_at: new Date(today.getTime() - 1000 * 60 * 60).toISOString() },
+    ],
     courts: MOCK_COURTS[0],
   },
   {
     id: 'r2', court_id: 'c2', user_id: null, title: 'Evening Pickup Game',
     notes: '', start_time: '17:00', end_time: '18:00',
-    status: 'awaiting_payment', total_amount: 300, paid_amount: 150, payment_status: 'partial', payment_method: 'gcash',
+    status: 'confirmed', total_amount: 300, paid_amount: 150, payment_status: 'partial', payment_review_status: 'approved', pending_payment_amount: 0, payment_method: 'gcash',
     customer_name: 'Walk-in Player', customer_phone: '09981234567', customer_email: 'walkin@example.com',
     booking_source: 'guest', is_guest_booking: true,
     created_at: new Date().toISOString(),
     reservation_days: [
       { id: 'rd3', reservation_id: 'r2', date: formatLocalDate(today) },
+    ],
+    booking_logs: [
+      { id: 'bl5', reservation_id: 'r2', event_type: 'booking_created', title: 'Booking created', description: 'Booking was created and the selected slot is now reserved.', created_at: new Date(today.getTime() - 1000 * 60 * 50).toISOString() },
+      { id: 'bl6', reservation_id: 'r2', event_type: 'payment_reviewed', title: 'Payment reviewed', description: 'The latest submitted payment was approved.', created_at: new Date(today.getTime() - 1000 * 60 * 40).toISOString() },
+      { id: 'bl7', reservation_id: 'r2', event_type: 'booking_confirmed', title: 'Booking confirmed', description: 'Booking was confirmed and is ready for the scheduled date.', created_at: new Date(today.getTime() - 1000 * 60 * 35).toISOString() },
+      { id: 'bl8', reservation_id: 'r2', event_type: 'deposit_verified', title: 'Deposit verified', description: 'The booking now has a verified deposit.', created_at: new Date(today.getTime() - 1000 * 60 * 30).toISOString() },
     ],
     courts: MOCK_COURTS[1],
   },

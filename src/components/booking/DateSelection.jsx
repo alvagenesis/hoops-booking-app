@@ -32,11 +32,11 @@ const DateSelection = ({ selectedDates, onSelect }) => {
                         showOutsideDays
                         classNames={{
                             root: 'text-gray-100',
-                            months: 'flex flex-col md:flex-row gap-4 md:gap-8',
+                            months: 'relative flex flex-col md:flex-row gap-4 md:gap-8',
                             month_caption: 'text-sm font-semibold text-gray-200 mb-2 px-2',
                             weekday: 'text-xs text-gray-500 font-medium',
                             day_button: 'w-9 h-9 text-sm rounded-lg transition-colors',
-                            today: 'font-bold text-blue-400',
+                            today: 'font-bold text-blue-400 ring-2 ring-blue-500 rounded-lg !bg-transparent',
                             selected: 'bg-blue-600 text-white',
                             range_start: 'bg-blue-600 text-white rounded-l-lg',
                             range_end: 'bg-blue-600 text-white rounded-r-lg',

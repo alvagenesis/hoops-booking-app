@@ -31,6 +31,7 @@ A basketball court booking management system with AI-powered smart booking, buil
    ```
 
 3. Set up your Supabase project and run `supabase-schema.sql` in the SQL Editor.
+   This script also creates the required Storage buckets like `payment-proofs` and `avatars`.
 
 4. Start the dev server:
    ```bash

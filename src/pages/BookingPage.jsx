@@ -11,8 +11,22 @@ import { useCourts } from '../hooks/useCourts';
 import { useTimeSlots } from '../hooks/useTimeSlots';
 import { useReservations } from '../hooks/useReservations';
 import { useAuth } from '../hooks/useAuth';
+import { getSlotTimingState } from '../lib/timeSlotRules';
 
 const STEPS = ['Court', 'Date', 'Time', 'Review'];
+
+function getDatesInRange(start, end) {
+    const dates = [];
+    const current = new Date(start);
+    const last = new Date(end);
+
+    while (current <= last) {
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+    }
+
+    return dates;
+}
 
 const BookingPage = () => {
     const navigate = useNavigate();
@@ -34,11 +48,30 @@ const BookingPage = () => {
     const timeSlots = dayOfWeek !== null ? getSlotsForDay(dayOfWeek) : [];
 
     useEffect(() => {
-        if (selectedDates?.from && selectedCourt?.id) {
-            getBookedSlotsForDay(selectedDates.from).then(setBookedSlots);
-        } else {
-            setBookedSlots([]);
+        async function loadBookedSlots() {
+            if (!selectedDates?.from || !selectedCourt?.id) {
+                setBookedSlots([]);
+                return;
+            }
+
+            const datesToCheck = getDatesInRange(selectedDates.from, selectedDates.to || selectedDates.from);
+            const bookedByDay = await Promise.all(datesToCheck.map(date => getBookedSlotsForDay(date)));
+
+            const mergedSlots = [];
+            const seen = new Set();
+
+            bookedByDay.flat().forEach(slot => {
+                const key = `${slot.source || 'unknown'}:${slot.start_time}:${slot.end_time}:${slot.reason || ''}:${slot.block_type || ''}:${slot.id || ''}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    mergedSlots.push(slot);
+                }
+            });
+
+            setBookedSlots(mergedSlots);
         }
+
+        loadBookedSlots();
     }, [selectedDates, selectedCourt, getBookedSlotsForDay]);
 
     const canAdvance = () => {
@@ -48,25 +81,52 @@ const BookingPage = () => {
         return true;
     };
 
-    const handleConfirm = async ({ title, notes, totalAmount, dates, paymentStatus, paidAmount, paymentMethod, customerName, customerPhone, customerEmail, paymentNotes, paymentProofFile }) => {
+    const hasInvalidSelectedSlot = () => {
+        if (!selectedDates?.from || selectedSlots.length === 0) return false;
+        return selectedSlots.some(slot => getSlotTimingState(slot.start, selectedDates.from) !== 'available');
+    };
+
+    const handleNext = () => {
+        if (step === 2 && hasInvalidSelectedSlot()) {
+            setSelectedSlots([]);
+            setError('Selected time slot is no longer valid. Please choose a new slot.');
+            return;
+        }
+
+        setError('');
+        setStep(step + 1);
+    };
+
+    const handleConfirm = async ({ title, notes, totalAmount, dates, paymentStatus, paidAmount, paymentMethod, customerName, customerPhone, customerEmail, paymentNotes, paymentProofFile, addons }) => {
         setSubmitting(true);
         setError('');
         const isGuestBooking = !user;
+        const submittedPaymentAmount = paidAmount || 0;
+        if (submittedPaymentAmount <= 0) {
+            setError('A deposit or full payment is required before the booking can be created.');
+            setSubmitting(false);
+            return;
+        }
+
         const baseReservation = {
             court_id: selectedCourt.id,
             title: title || 'Court Booking',
             notes: notes || '',
             start_time: selectedSlots[0].start,
             end_time: selectedSlots[selectedSlots.length - 1].end,
-            status: paymentStatus === 'paid' ? 'pending' : 'awaiting_payment',
+            status: 'pending_verification',
             total_amount: totalAmount,
-            paid_amount: paidAmount,
+            paid_amount: 0,
+            pending_payment_amount: submittedPaymentAmount,
             payment_status: paymentStatus,
-            payment_method: paymentMethod,
+            payment_review_status: 'pending',
+            payment_method: null,
+            pending_payment_method: paymentMethod,
             customer_name: customerName?.trim() || '',
             customer_phone: customerPhone?.trim() || '',
             customer_email: customerEmail?.trim() || '',
-            payment_notes: paymentNotes || '',
+            payment_notes: '',
+            pending_payment_notes: paymentNotes || '',
         };
 
         const reservationPayload = isGuestBooking
@@ -88,6 +148,7 @@ const BookingPage = () => {
                 reservation: reservationPayload,
                 dates,
                 paymentProofFile,
+                addons: addons || [],
             });
             if (isGuestBooking) {
                 navigate('/booking-success', { state: { booking: result, court: selectedCourt, dates, slots: selectedSlots } });
@@ -124,7 +185,6 @@ const BookingPage = () => {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Button variant="ghost" onClick={() => navigate('/calendar')}>Back to Calendar</Button>
                             <Button onClick={() => navigate('/login')}>Sign In</Button>
                         </div>
                     </div>
@@ -177,16 +237,18 @@ const BookingPage = () => {
 
                 {step < 3 && (
                     <div className="flex items-center justify-between">
+                        {(step > 0 || user) ? (
+                            <Button
+                                variant="ghost"
+                                onClick={() => step > 0 ? setStep(step - 1) : navigate('/dashboard')}
+                                className="text-gray-400 hover:text-gray-200"
+                            >
+                                <ChevronLeft className="w-4 h-4 mr-1" />
+                                {step > 0 ? 'Back' : 'Cancel'}
+                            </Button>
+                        ) : <div />}
                         <Button
-                            variant="ghost"
-                            onClick={() => step > 0 ? setStep(step - 1) : navigate(user ? '/dashboard' : '/calendar')}
-                            className="text-gray-400 hover:text-gray-200"
-                        >
-                            <ChevronLeft className="w-4 h-4 mr-1" />
-                            {step > 0 ? 'Back' : 'Cancel'}
-                        </Button>
-                        <Button
-                            onClick={() => setStep(step + 1)}
+                            onClick={handleNext}
                             disabled={!canAdvance()}
                             className="gap-1"
                         >

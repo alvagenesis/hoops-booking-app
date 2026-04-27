@@ -1,32 +1,61 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, uploadPaymentProof } from '../lib/supabase';
 import { INITIAL_RESERVATIONS } from '../lib/constants';
 import { useAuth } from './useAuth';
+import { useGlobalLoading } from '../contexts/LoadingContext';
+import { normalizePaymentState } from '../lib/paymentUtils';
 
 function normalizeReservationShape(reservation) {
-  return {
+  return normalizePaymentState({
     ...reservation,
-    payment_status: reservation.payment_status || 'unpaid',
     booking_source: reservation.booking_source || (reservation.user_id ? 'member' : 'guest'),
     is_guest_booking: reservation.is_guest_booking ?? !reservation.user_id,
     customer_name: reservation.customer_name || '',
     customer_phone: reservation.customer_phone || '',
     customer_email: reservation.customer_email || '',
-  };
+    booking_logs: Array.isArray(reservation.booking_logs) ? reservation.booking_logs : [],
+  });
+}
+
+function buildAddonRows(reservationId, addons = []) {
+  return addons.map(a => ({
+    reservation_id: reservationId,
+    amenity_id: a.amenity_id,
+    price_at_booking: a.price_at_booking,
+    amenities: a.amenities ? { name: a.amenities.name } : (a.name ? { name: a.name } : undefined),
+  }));
+}
+
+function stripAddonInsertFields(addons = []) {
+  return addons.map(({ reservation_id, amenity_id, price_at_booking }) => ({
+    reservation_id,
+    amenity_id,
+    price_at_booking,
+  }));
+}
+
+async function rollbackReservationTree(reservationId) {
+  if (!supabase || !reservationId) return;
+
+  await supabase.from('reservation_addons').delete().eq('reservation_id', reservationId);
+  await supabase.from('reservation_days').delete().eq('reservation_id', reservationId);
+  await supabase.from('reservations').delete().eq('id', reservationId);
 }
 
 export function useReservations() {
   const { user, role, loading: authLoading } = useAuth();
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const { track } = useGlobalLoading();
+  const refreshTimeoutRef = useRef(null);
 
   const fetchReservations = useCallback(async () => {
-    if (authLoading) {
-      return;
-    }
+    if (authLoading) return;
 
     if (!user) {
       setReservations([]);
+      setLastUpdatedAt(null);
       setLoading(false);
       return;
     }
@@ -35,45 +64,109 @@ export function useReservations() {
 
     if (!supabase) {
       setReservations(INITIAL_RESERVATIONS.map(normalizeReservationShape));
+      setLastUpdatedAt(new Date().toISOString());
       setLoading(false);
       return;
     }
 
-    const isAdmin = role === 'admin';
-    let query = supabase
-      .from('reservations')
-      .select('*, courts(*), reservation_days(*)');
+    await track(async () => {
+      const isAdmin = role === 'admin';
+      let query = supabase
+        .from('reservations')
+        .select('*, courts(*), reservation_days(*), reservation_addons(*, amenities(name)), booking_logs(*)');
 
-    // Admins see everything, users see only their own
-    if (!isAdmin) {
-      query = query.eq('user_id', user.id);
-    }
+      if (!isAdmin) {
+        query = query.eq('user_id', user.id);
+      }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query.order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setReservations(data.map(normalizeReservationShape));
-    } else {
-      setReservations(INITIAL_RESERVATIONS.map(normalizeReservationShape));
-    }
+      if (!error && data) {
+        setReservations(data.map(normalizeReservationShape));
+        setLastUpdatedAt(new Date().toISOString());
+      } else {
+        setReservations(INITIAL_RESERVATIONS.map(normalizeReservationShape));
+        setLastUpdatedAt(new Date().toISOString());
+      }
+    });
     setLoading(false);
-  }, [user, role, authLoading]);
+  }, [user, role, authLoading, track]);
 
   useEffect(() => {
-    if (!authLoading) {
+    if (authLoading) return undefined;
+
+    const timeoutId = setTimeout(() => {
       fetchReservations();
-    }
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [fetchReservations, authLoading]);
 
-  async function createReservation({ reservation, dates, paymentProofFile }) {
+  useEffect(() => {
+    if (authLoading || !user || !supabase) return undefined;
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+
+      refreshTimeoutRef.current = setTimeout(() => {
+        refreshTimeoutRef.current = null;
+        fetchReservations();
+      }, 150);
+    };
+
+    const channel = supabase
+      .channel(`reservations-live-${role || 'member'}-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservations' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservation_days' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservation_addons' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'booking_logs' },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [authLoading, user, role, fetchReservations]);
+
+  async function createReservation({ reservation, dates, paymentProofFile, addons = [] }) {
+    if (Number(reservation?.pending_payment_amount || 0) <= 0) {
+      throw new Error('A deposit or full payment is required before a booking can be created.');
+    }
+
     if (!supabase) {
       const uploadedProof = paymentProofFile ? await uploadPaymentProof(paymentProofFile) : null;
       const newRes = normalizeReservationShape({
         id: crypto.randomUUID(),
         ...reservation,
-        payment_proof_url: uploadedProof?.publicUrl || reservation.payment_proof_url || '',
+        status: reservation.status || 'pending_verification',
+        payment_status: reservation.payment_status || (reservation.pending_payment_amount >= reservation.total_amount ? 'paid' : 'partial'),
+        payment_review_status: 'pending',
+        payment_proof_url: reservation.payment_proof_url || '',
+        pending_payment_proof_url: uploadedProof?.publicUrl || reservation.pending_payment_proof_url || '',
         created_at: new Date().toISOString(),
         reservation_days: dates.map(d => ({ id: crypto.randomUUID(), reservation_id: 'mock', date: d })),
+        reservation_addons: addons.map(a => ({ id: crypto.randomUUID(), amenity_id: a.amenity_id, price_at_booking: a.price_at_booking })),
         courts: null,
       });
       setReservations(prev => [newRes, ...prev]);
@@ -90,12 +183,15 @@ export function useReservations() {
       customer_phone: reservation.customer_phone || '',
       customer_email: reservation.customer_email || '',
       payment_notes: reservation.payment_notes || '',
+      status: reservation.status || 'pending_verification',
+      payment_status: reservation.payment_status || (reservation.pending_payment_amount >= reservation.total_amount ? 'paid' : 'partial'),
+      payment_review_status: 'pending',
     };
 
     if (paymentProofFile) {
       const tempProofId = crypto.randomUUID();
       const uploadedProof = await uploadPaymentProof(paymentProofFile, tempProofId);
-      reservationPayload.payment_proof_url = uploadedProof.publicUrl;
+      reservationPayload.pending_payment_proof_url = uploadedProof.publicUrl;
     }
 
     const debugPayload = {
@@ -152,8 +248,29 @@ export function useReservations() {
         throw new Error(`Reservation days insert failed: ${dayError.message}`);
       }
 
+      let addonRows = [];
+      if (addons.length > 0) {
+        addonRows = buildAddonRows(resData.id, addons);
+        const { error: addonError } = await supabase
+          .from('reservation_addons')
+          .insert(stripAddonInsertFields(addonRows));
+
+        if (addonError) {
+          console.error('Addon insert failed (member)', { reservationId: resData.id, addonRows, error: addonError });
+          await rollbackReservationTree(resData.id);
+          throw new Error(`Reservation add-ons insert failed: ${addonError.message}`);
+        }
+      }
+
+      const createdReservation = normalizeReservationShape({
+        ...resData,
+        reservation_days: dayRows,
+        reservation_addons: addonRows,
+      });
+
+      setReservations(prev => [createdReservation, ...prev.filter(r => r.id !== createdReservation.id)]);
       await fetchReservations();
-      return normalizeReservationShape(resData);
+      return createdReservation;
     }
 
     // Guest path continued: insert reservation days using pre-generated ID
@@ -166,11 +283,26 @@ export function useReservations() {
       throw new Error(`Reservation days insert failed: ${dayError.message}`);
     }
 
+    let addonRows = [];
+    if (addons.length > 0) {
+      addonRows = buildAddonRows(reservationId, addons);
+      const { error: addonError } = await supabase
+        .from('reservation_addons')
+        .insert(stripAddonInsertFields(addonRows));
+
+      if (addonError) {
+        console.error('Addon insert failed (guest)', { reservationId, addonRows, error: addonError });
+        await rollbackReservationTree(reservationId);
+        throw new Error(`Reservation add-ons insert failed: ${addonError.message}`);
+      }
+    }
+
     // Return a shape built from the payload — no DB round-trip needed
     return normalizeReservationShape({
       ...reservationPayload,
       created_at: new Date().toISOString(),
       reservation_days: dayRows,
+      reservation_addons: addonRows,
       courts: null,
     });
   }
@@ -199,7 +331,7 @@ export function useReservations() {
       .from('reservations')
       .update(updates)
       .eq('id', id)
-      .select('*, courts(*), reservation_days(*)')
+      .select('*, courts(*), reservation_days(*), reservation_addons(*, amenities(name)), booking_logs(*)')
       .single();
     if (error) throw error;
     setReservations(prev => prev.map(r => r.id === id ? normalizeReservationShape(data) : r));
@@ -207,45 +339,91 @@ export function useReservations() {
   }
 
   async function payReservation(id, amount, method, options = {}) {
+    const buildPaymentState = (reservation, paymentAmount) => {
+      const currentPaid = reservation?.paid_amount || 0;
+      const totalAmount = reservation?.total_amount || 0;
+      const currentStatus = reservation?.status;
+      const currentReviewStatus = reservation?.payment_review_status || 'not_submitted';
+      const remainingBalance = Math.max(totalAmount - currentPaid, 0);
+      const hasVerifiedDeposit = currentStatus === 'confirmed' && currentPaid > 0 && currentPaid < totalAmount;
+      const canRetryInitialPayment = currentStatus === 'pending_verification' && currentReviewStatus === 'rejected';
+
+      if (paymentAmount <= 0) {
+        throw new Error('Payment amount must be greater than zero.');
+      }
+
+      if (['cancelled', 'completed', 'no_show'].includes(currentStatus)) {
+        throw new Error('This booking can no longer accept payment.');
+      }
+
+      if (currentReviewStatus === 'pending') {
+        throw new Error('Your last payment is still awaiting verification.');
+      }
+
+      if (paymentAmount > remainingBalance) {
+        throw new Error('Payment amount cannot exceed the remaining balance.');
+      }
+
+      if (!canRetryInitialPayment && !hasVerifiedDeposit) {
+        throw new Error('Payment submission is not available for this booking right now.');
+      }
+
+      if (hasVerifiedDeposit && paymentAmount < remainingBalance) {
+        throw new Error('After a verified deposit, the next payment must settle the full remaining balance.');
+      }
+
+      return { reservationStatus: currentStatus };
+    };
+
     if (!supabase) {
       const uploadedProof = options.paymentProofFile ? await uploadPaymentProof(options.paymentProofFile, id) : null;
+      let caughtError = null;
+
       setReservations(prev => prev.map(r => {
         if (r.id === id) {
-          const newPaid = (r.paid_amount || 0) + amount;
-          const status = uploadedProof ? 'for_verification' : (newPaid >= r.total_amount ? 'paid' : 'partial');
-          return {
-            ...r,
-            paid_amount: newPaid,
-            payment_status: status,
-            payment_method: method,
-            payment_notes: options.paymentNotes || r.payment_notes,
-            payment_proof_url: uploadedProof?.publicUrl || r.payment_proof_url,
-          };
+          try {
+            const { reservationStatus } = buildPaymentState(r, amount);
+            return {
+              ...r,
+              payment_review_status: 'pending',
+              pending_payment_amount: amount,
+              status: reservationStatus,
+              pending_payment_method: method,
+              pending_payment_notes: options.paymentNotes || '',
+              pending_payment_proof_url: uploadedProof?.publicUrl || '',
+            };
+          } catch (error) {
+            caughtError = error;
+          }
         }
         return r;
       }));
+
+      if (caughtError) throw caughtError;
       return;
     }
 
     const { data: currentRes } = await supabase
       .from('reservations')
-      .select('paid_amount, total_amount')
+      .select('paid_amount, total_amount, status, payment_review_status')
       .eq('id', id)
       .single();
 
     const uploadedProof = options.paymentProofFile ? await uploadPaymentProof(options.paymentProofFile, id) : null;
-    const newPaid = (currentRes?.paid_amount || 0) + amount;
-    const status = uploadedProof ? 'for_verification' : (newPaid >= currentRes?.total_amount ? 'paid' : 'partial');
+    const { reservationStatus } = buildPaymentState(currentRes, amount);
+
+    const updatePayload = {
+      payment_review_status: 'pending',
+      pending_payment_amount: amount,
+      pending_payment_method: method,
+      pending_payment_notes: options.paymentNotes,
+      ...(uploadedProof?.publicUrl ? { pending_payment_proof_url: uploadedProof.publicUrl } : {}),
+      ...(reservationStatus ? { status: reservationStatus } : {}),
+    };
 
     const { data, error } = await supabase
       .from('reservations')
-      .update({
-        paid_amount: newPaid,
-        payment_status: status,
-        payment_method: method,
-        payment_notes: options.paymentNotes,
-        payment_proof_url: uploadedProof?.publicUrl,
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
@@ -255,5 +433,5 @@ export function useReservations() {
     return data;
   }
 
-  return { reservations, loading, createReservation, cancelReservation, updateReservation, payReservation, refetch: fetchReservations };
+  return { reservations, loading, lastUpdatedAt, createReservation, cancelReservation, updateReservation, payReservation, refetch: fetchReservations };
 }

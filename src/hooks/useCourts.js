@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { MOCK_COURTS } from '../lib/constants';
+import { useGlobalLoading } from '../contexts/LoadingContext';
 
 export function useCourts() {
   const [courts, setCourts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { track } = useGlobalLoading();
 
   const fetchCourts = useCallback(async () => {
     setLoading(true);
@@ -14,18 +16,20 @@ export function useCourts() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('courts')
-      .select('*')
-      .order('sort_order');
+    await track(async () => {
+      const { data, error } = await supabase
+        .from('courts')
+        .select('*')
+        .order('sort_order');
 
-    if (!error && data) {
-      setCourts(data);
-    } else {
-      setCourts(MOCK_COURTS);
-    }
+      if (!error && data) {
+        setCourts(data);
+      } else {
+        setCourts(MOCK_COURTS);
+      }
+    });
     setLoading(false);
-  }, []);
+  }, [track]);
 
   useEffect(() => {
     fetchCourts();

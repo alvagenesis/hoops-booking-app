@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import Button from '../components/ui/Button';
-import BookingModal from '../modals/BookingModal';
 import PaymentModal from '../modals/PaymentModal';
-import AIBookingModal from '../modals/AIBookingModal';
 import ReservationDetailModal from '../modals/ReservationDetailModal';
-import { getDaysInMonth, getFirstDayOfMonth, formatDate, formatLocalDate, isSameDay, isDateInRange, DAYS_OF_WEEK } from '../lib/utils';
+import { getDaysInMonth, getFirstDayOfMonth, isSameDay, isDateInRange, DAYS_OF_WEEK } from '../lib/utils';
 import { useReservations } from '../hooks/useReservations';
-import { useCourts } from '../hooks/useCourts';
 import { useAuth } from '../hooks/useAuth';
 
 const SHORT_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -23,15 +20,16 @@ function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose,
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  const W = 220;
-  let left = anchorRect.left;
-  let top  = anchorRect.bottom + 6;
+  const W = Math.min(260, window.innerWidth - 16);
+  const estimatedH = 80 + reservations.length * 28;
+  let left = anchorRect.left + (anchorRect.width - W) / 2;
+  let top = anchorRect.top + 12;
+
   if (left + W > window.innerWidth - 8) left = window.innerWidth - W - 8;
   if (left < 8) left = 8;
-  const estimatedH = 80 + reservations.length * 28;
-  if (top + estimatedH > window.innerHeight - 8) top = anchorRect.top - estimatedH - 6;
+  if (top + estimatedH > window.innerHeight - 8) top = Math.max(8, anchorRect.bottom - estimatedH - 12);
 
-  return (
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[60]" onClick={onClose} />
       <div
@@ -60,10 +58,10 @@ function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose,
             return (
               <button
                 key={i}
-                className={`w-full text-left px-2 h-[22px] flex items-center rounded text-[12px] leading-none truncate transition-opacity hover:opacity-75 ${
+                className={`w-full text-left px-2 h-[22px] flex items-center rounded text-[12px] leading-none truncate border transition-colors ${
                   isConfirmed
-                    ? 'bg-[#4a6fa5] text-white'
-                    : 'bg-[#a56a4a] text-white'
+                    ? 'bg-blue-500/10 text-blue-300 border-blue-500/20 hover:bg-blue-500/20'
+                    : 'bg-orange-500/10 text-orange-300 border-orange-500/20 hover:bg-orange-500/20'
                 }`}
                 onClick={() => onSelect(res)}
               >
@@ -74,48 +72,32 @@ function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose,
           })}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
 const CalendarPage = () => {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const { reservations, createReservation, cancelReservation, updateReservation } = useReservations();
-  const { courts } = useCourts();
+  const { user, role, loading: authLoading } = useAuth();
+  const { reservations, cancelReservation, updateReservation, payReservation } = useReservations();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [currentDate, setCurrentDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [selectedDates, setSelectedDates] = useState({ start: null, end: null });
 
   // Modal states
-  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
-  const [isAiBookingModalOpen, setIsAiBookingModalOpen] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
-  const [aiPrefillData, setAiPrefillData] = useState(null);
-  const [pendingBookingInfo, setPendingBookingInfo] = useState(null);
+  const [pendingPaymentRes, setPendingPaymentRes] = useState(null);
 
   const [bookingError, setBookingError] = useState('');
   const [dayPopup, setDayPopup] = useState(null);
 
-  // Handle header button actions via URL params
+  // Redirect any action params to /book
   useEffect(() => {
     const action = searchParams.get('action');
     if (action) {
-      // Move state updates to a microtask to avoid 'set-state-in-effect' warning
       Promise.resolve().then(() => {
-        if (!user) {
-          navigate('/book');
-          setSearchParams({}, { replace: true });
-          return;
-        }
-        if (action === 'smart-book') {
-          setIsAiBookingModalOpen(true);
-        } else if (action === 'new-booking') {
-          setAiPrefillData(null);
-          setIsBookingModalOpen(true);
-        }
+        navigate('/book');
         setSearchParams({}, { replace: true });
       });
     }
@@ -131,65 +113,14 @@ const CalendarPage = () => {
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const goToday = () => setCurrentDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
-  const handleDayClick = (day) => {
-    if (!user) {
-      navigate('/book');
-      return;
-    }
-    const clickedDate = new Date(year, month, day);
-    if (!selectedDates.start || (selectedDates.start && selectedDates.end)) {
-      setSelectedDates({ start: clickedDate, end: null });
-    } else {
-      if (clickedDate >= selectedDates.start) {
-        setSelectedDates({ start: selectedDates.start, end: clickedDate });
-        setAiPrefillData(null);
-        setTimeout(() => setIsBookingModalOpen(true), 300);
-      } else {
-        setSelectedDates({ start: clickedDate, end: null });
-      }
-    }
-  };
-
-  const handleInitiateBooking = (bookingData) => {
-    setPendingBookingInfo(bookingData);
-    setIsBookingModalOpen(false);
-    setIsPaymentModalOpen(true);
-  };
-
-  const handleConfirmPayment = async (paymentData) => {
-    setBookingError('');
-    if (!user?.id) {
-      setBookingError('Your session is still loading. Please wait a moment and try again.');
-      return;
-    }
+  const handleBalancePayment = async ({ paidAmount, paymentMethod, paymentNotes, paymentProofFile }) => {
+    if (!pendingPaymentRes) return;
     try {
-      const dates = getDatesInRange(pendingBookingInfo.start, pendingBookingInfo.end);
-      await createReservation({
-        reservation: {
-          court_id: pendingBookingInfo.courtId,
-          user_id: user.id,
-          title: pendingBookingInfo.title,
-          notes: pendingBookingInfo.notes || '',
-          start_time: pendingBookingInfo.startTime || '08:00',
-          end_time: pendingBookingInfo.endTime || '09:00',
-          status: paymentData.paymentStatus === 'paid' ? 'pending' : 'awaiting_payment',
-          payment_status: paymentData.paymentStatus,
-          paid_amount: paymentData.paidAmount,
-          total_amount: pendingBookingInfo.totalAmount,
-          payment_method: paymentData.paymentMethod,
-          payment_notes: paymentData.paymentNotes || '',
-          booking_source: 'member',
-          is_guest_booking: false,
-        },
-        dates,
-        paymentProofFile: paymentData.paymentProofFile,
-      });
+      await payReservation(pendingPaymentRes.id, paidAmount, paymentMethod, { paymentNotes, paymentProofFile });
+      setPendingPaymentRes(null);
     } catch (err) {
-      setBookingError(err?.message || 'Failed to save booking. Please try again.');
+      console.error('Payment failed:', err);
     }
-    setIsPaymentModalOpen(false);
-    setPendingBookingInfo(null);
-    setSelectedDates({ start: null, end: null });
   };
 
   const days = [];
@@ -198,29 +129,18 @@ const CalendarPage = () => {
   const totalCells = Math.ceil(days.length / 7) * 7;
   while (days.length < totalCells) days.push(null);
   const calendarDays = days;
-
-  const isDateSelected = (day) => {
-    if (!day || !selectedDates.start) return false;
-    const date = new Date(year, month, day);
-    if (selectedDates.end) return date >= selectedDates.start && date <= selectedDates.end;
-    return isSameDay(date, selectedDates.start);
-  };
-
-  const isSelectionStart = (day) => day && selectedDates.start && isSameDay(new Date(year, month, day), selectedDates.start);
-  const isSelectionEnd = (day) => day && selectedDates.end && isSameDay(new Date(year, month, day), selectedDates.end);
+  const weekCount = calendarDays.length / 7;
 
   const getReservationsForDay = (day) => {
     if (!day) return [];
     const date = new Date(year, month, day);
     return reservations.filter(res => {
-      // Support reservation_days array (fallback data shape)
       if (res.reservation_days && res.reservation_days.length > 0) {
         return res.reservation_days.some(rd => {
           const rdDate = new Date(rd.date);
           return !isNaN(rdDate) && isSameDay(date, rdDate);
         });
       }
-      // Support start_date / end_date range, then single created reservation fallback
       const startRaw = res.start_date || res.start || res.created_at;
       const endRaw = res.end_date || res.end || res.created_at;
       if (!startRaw || !endRaw) return false;
@@ -232,9 +152,9 @@ const CalendarPage = () => {
   };
 
   return (
-    <>
+    <div className="flex h-full min-h-[640px] flex-col">
       {!user && !authLoading && (
-        <div className="mb-4 flex items-center justify-between gap-3 p-3 bg-[#111116] border border-gray-800 rounded-lg">
+        <div className="mb-4 flex shrink-0 items-center justify-between gap-3 p-3 bg-[#111116] border border-gray-800 rounded-lg">
           <p className="text-sm text-gray-400">Sign in to view existing bookings. To check real-time slot availability, use Book a Slot below.</p>
           <button
             onClick={() => navigate('/book')}
@@ -245,17 +165,17 @@ const CalendarPage = () => {
         </div>
       )}
       {authLoading && (
-        <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+        <div className="mb-4 shrink-0 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
           <p className="text-blue-300 text-sm">Loading your booking session...</p>
         </div>
       )}
       {bookingError && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-between">
+        <div className="mb-4 flex shrink-0 items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
           <p className="text-red-400 text-sm">{bookingError}</p>
           <button onClick={() => setBookingError('')} className="text-red-400 hover:text-red-300 text-sm font-medium ml-4">Dismiss</button>
         </div>
       )}
-      <div className="min-h-[600px] flex flex-col bg-[#111116] border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
+      <div className="flex min-h-0 flex-1 flex-col bg-[#111116] border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
         {/* Calendar Header */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-800 bg-[#16161c]">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -280,8 +200,8 @@ const CalendarPage = () => {
         </div>
 
         {/* Calendar Grid */}
-        <div className="flex-1 overflow-auto bg-[#0a0a0c]">
-          <div className="min-w-[320px] flex flex-col">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#0a0a0c]">
+          <div className="flex min-h-full min-w-[320px] flex-col">
             <div className="grid grid-cols-7 border-b border-gray-800 bg-[#111116] sticky top-0 z-10">
               {DAYS_OF_WEEK.map(day => (
                 <div key={day} className="py-2 text-center text-xs font-semibold text-gray-500 tracking-wider uppercase border-r border-gray-800 last:border-r-0">
@@ -290,38 +210,27 @@ const CalendarPage = () => {
               ))}
             </div>
 
-            <div className="grid grid-cols-7" style={{ gridAutoRows: 'minmax(110px, auto)' }}>
+            <div className="grid flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}>
               {calendarDays.map((day, idx) => {
                 const dayReservations = getReservationsForDay(day);
                 const isToday = day && isSameDay(new Date(year, month, day), new Date());
-                const selected = isDateSelected(day);
-                const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
-                const isPast = day && new Date(year, month, day) < todayDate;
                 const hasOverflow = dayReservations.length > MAX_VISIBLE;
                 const visibleCount = hasOverflow ? MAX_VISIBLE - 1 : dayReservations.length;
 
-                let cellClass = "p-1 sm:p-2 flex flex-col border-b border-r border-gray-800/50 last:border-r-0 transition-colors group ";
-                if (!day) cellClass += "bg-[#0d0d10]";
-                else if (isPast) cellClass += "bg-[#0d0d10] opacity-40 cursor-not-allowed";
-                else if (selected) {
-                  cellClass += "bg-blue-900/20 cursor-pointer";
-                  if (isSelectionStart(day)) cellClass += " rounded-l-lg border-l-2 border-l-blue-500";
-                  if (isSelectionEnd(day)) cellClass += " rounded-r-lg border-r-2 border-r-blue-500";
-                }
-                else cellClass += "hover:bg-[#16161c] bg-[#111116] cursor-pointer";
+                const cellClass = `p-1 sm:p-2 flex flex-col border-b border-r border-gray-800/50 last:border-r-0 ${
+                  !day ? 'bg-[#0d0d10]' : 'bg-[#111116]'
+                }`;
 
                 return (
-                  <div key={idx} className={cellClass} onClick={() => day && !isPast && handleDayClick(day)}>
+                  <div key={idx} className={cellClass} data-calendar-day-cell={day ? 'true' : undefined}>
                     {day && (
                       <>
                         <div className="flex justify-between items-start mb-1">
-                          <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-gray-400 group-hover:text-gray-200'
-                            }`}>
+                          <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${
+                            isToday ? 'bg-blue-600 text-white' : 'text-gray-400'
+                          }`}>
                             {day}
                           </span>
-                          {dayReservations.length === 0 && !selected && (
-                            <span className="opacity-0 group-hover:opacity-100 text-[10px] text-gray-600 transition-opacity">Click to book</span>
-                          )}
                         </div>
 
                         <div className="space-y-0.5">
@@ -361,7 +270,12 @@ const CalendarPage = () => {
                             className="w-full text-left px-1.5 py-0.5 mt-0.5 text-[11px] text-gray-400 hover:text-blue-400 transition-colors rounded"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDayPopup({ day, reservations: dayReservations, anchorRect: e.currentTarget.getBoundingClientRect() });
+                              const cell = e.currentTarget.closest('[data-calendar-day-cell]');
+                              setDayPopup({
+                                day,
+                                reservations: dayReservations,
+                                anchorRect: (cell || e.currentTarget).getBoundingClientRect(),
+                              });
                             }}
                           >
                             + {dayReservations.length - visibleCount} more
@@ -375,59 +289,9 @@ const CalendarPage = () => {
             </div>
           </div>
         </div>
-
-        {/* Selection Hint Footer */}
-        <div className="px-3 sm:px-6 py-3 bg-[#16161c] border-t border-gray-800 flex flex-col sm:flex-row gap-2 sm:justify-between sm:items-center">
-          <div className="text-xs sm:text-sm text-gray-400">
-            {selectedDates.start ? (
-              selectedDates.end
-                ? <span>Selected: <strong className="text-blue-400">{formatDate(selectedDates.start)}</strong> to <strong className="text-blue-400">{formatDate(selectedDates.end)}</strong></span>
-                : <span>Select end date or click again to book single day: <strong className="text-blue-400">{formatDate(selectedDates.start)}</strong></span>
-            ) : (
-              "Click on a day to start a reservation. Select a second day for multi-day booking."
-            )}
-          </div>
-          {selectedDates.start && !selectedDates.end && (
-            <Button onClick={() => {
-              setSelectedDates({ start: selectedDates.start, end: selectedDates.start });
-              setTimeout(() => setIsBookingModalOpen(true), 100);
-            }} className="py-1 px-3 text-xs">
-              Book {formatDate(selectedDates.start)}
-            </Button>
-          )}
-        </div>
       </div>
 
       {/* Modals */}
-      {isAiBookingModalOpen && (
-        <AIBookingModal
-          courts={courts}
-          onClose={() => setIsAiBookingModalOpen(false)}
-          onSuccess={(prefillData) => {
-            setIsAiBookingModalOpen(false);
-            setAiPrefillData(prefillData);
-            setSelectedDates({ start: prefillData.start, end: prefillData.end });
-            setIsBookingModalOpen(true);
-          }}
-        />
-      )}
-      {isBookingModalOpen && (
-        <BookingModal
-          courts={courts}
-          reservations={reservations}
-          onClose={() => { setIsBookingModalOpen(false); setAiPrefillData(null); }}
-          selectedDates={selectedDates}
-          initialData={aiPrefillData}
-          onProceed={handleInitiateBooking}
-        />
-      )}
-      {isPaymentModalOpen && pendingBookingInfo && (
-        <PaymentModal
-          bookingInfo={pendingBookingInfo}
-          onClose={() => setIsPaymentModalOpen(false)}
-          onConfirm={handleConfirmPayment}
-        />
-      )}
       {dayPopup && (
         <DayOverflowPopup
           day={dayPopup.day}
@@ -451,31 +315,30 @@ const CalendarPage = () => {
               setBookingError('Cancellation failed: ' + err.message);
             }
           }}
-          onAdminUpdate={async (id, updates) => {
+          onAdminUpdate={role === 'admin' ? async (id, updates) => {
             try {
               await updateReservation(id, updates);
               setSelectedReservation(null);
             } catch (err) {
               setBookingError('Update failed: ' + err.message);
             }
-          }}
+          } : undefined}
+          onPay={(res) => { setPendingPaymentRes(res); setSelectedReservation(null); }}
         />
       )}
-    </>
+      {pendingPaymentRes && (
+        <PaymentModal
+          bookingInfo={{
+            totalAmount: pendingPaymentRes.total_amount - (pendingPaymentRes.paid_amount || 0),
+            originalTotal: pendingPaymentRes.total_amount,
+          }}
+          onClose={() => setPendingPaymentRes(null)}
+          onConfirm={handleBalancePayment}
+          partialPaymentUsed={pendingPaymentRes.payment_status === 'partial'}
+        />
+      )}
+    </div>
   );
 };
-
-function getDatesInRange(start, end) {
-  const dates = [];
-  const current = new Date(start);
-  const last = new Date(end);
-
-  while (current <= last) {
-    dates.push(formatLocalDate(current));
-    current.setDate(current.getDate() + 1);
-  }
-
-  return dates;
-}
 
 export default CalendarPage;

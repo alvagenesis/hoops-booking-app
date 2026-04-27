@@ -26,60 +26,75 @@ function PaymentInstructions({ method }) {
     );
 }
 
-const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
-  const [paymentType, setPaymentType] = useState('partial');
+const PaymentModal = ({ bookingInfo, onClose, onConfirm, fullPaymentOnly = false, loading = false, allowedMethods, partialPaymentUsed = false }) => {
+  const [paymentType, setPaymentType] = useState(fullPaymentOnly || partialPaymentUsed ? 'full' : 'partial');
   const [paymentMethod, setPaymentMethod] = useState('gcash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentProofFile, setPaymentProofFile] = useState(null);
 
   const partialAmount = Math.round(bookingInfo.totalAmount / 2);
   const amountToPay = paymentType === 'full' ? bookingInfo.totalAmount : partialAmount;
+  const shouldForceFullPayment = fullPaymentOnly || partialPaymentUsed;
+  const paymentMethods = [
+    { id: 'gcash', name: 'GCash', color: 'bg-blue-600' },
+    { id: 'maya', name: 'Maya', color: 'bg-green-600' },
+    { id: 'bank_transfer', name: 'Bank Transfer', color: 'bg-indigo-600' },
+    { id: 'cash', name: 'Cash', color: 'bg-amber-600' }
+  ].filter(method => !allowedMethods || allowedMethods.includes(method.id));
 
   return (
     <ModalOverlay onClose={onClose}>
       <div className="flex justify-between items-center p-6 border-b border-gray-800 bg-[#16161c] rounded-t-2xl">
         <h3 className="text-lg font-semibold text-gray-100 flex items-center gap-2">
-          <CreditCard className="w-5 h-5 text-blue-400" /> Payment Options
+          <CreditCard className="w-5 h-5 text-blue-400" /> Submit Payment
         </h3>
         <button aria-label="Close" onClick={onClose} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
       </div>
 
       <div className="p-6 space-y-6">
         {/* Payment Amount Selection */}
-        <div className="space-y-3">
-          <label className="text-sm font-medium text-gray-300">Payment Plan</label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setPaymentType('full')}
-              className={`flex flex-col p-3 rounded-xl border text-left transition-colors ${paymentType === 'full' ? 'bg-blue-900/20 border-blue-500' : 'bg-[#1a1a24] border-gray-800 hover:border-gray-700'
-                }`}
-            >
-              <span className={`text-xs font-medium ${paymentType === 'full' ? 'text-blue-400' : 'text-gray-400'}`}>Pay in Full</span>
-              <span className="text-lg font-bold text-gray-100">₱{bookingInfo.totalAmount.toLocaleString()}</span>
-            </button>
+        {!shouldForceFullPayment && (
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-gray-300">Payment Plan</label>
+            <p className="text-xs text-gray-500">Choose the payment you want reviewed before the booking is confirmed.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setPaymentType('full')}
+                className={`flex flex-col p-3 rounded-xl border text-left transition-colors ${paymentType === 'full' ? 'bg-blue-900/20 border-blue-500' : 'bg-[#1a1a24] border-gray-800 hover:border-gray-700'}`}
+              >
+                <span className={`text-xs font-medium ${paymentType === 'full' ? 'text-blue-400' : 'text-gray-400'}`}>Full Payment</span>
+                <span className="text-lg font-bold text-gray-100">₱{bookingInfo.totalAmount.toLocaleString()}</span>
+              </button>
 
-            <button
-              onClick={() => setPaymentType('partial')}
-              className={`flex flex-col p-3 rounded-xl border text-left transition-colors relative overflow-hidden ${paymentType === 'partial' ? 'bg-blue-900/20 border-blue-500' : 'bg-[#1a1a24] border-gray-800 hover:border-gray-700'
-                }`}
-            >
-              {paymentType === 'partial' && <div className="absolute top-0 right-0 w-8 h-8 bg-blue-500/20 rounded-bl-full"></div>}
-              <span className={`text-xs font-medium ${paymentType === 'partial' ? 'text-blue-400' : 'text-gray-400'}`}>Partial (50% Deposit)</span>
-              <span className="text-lg font-bold text-gray-100">₱{partialAmount.toLocaleString()}</span>
-            </button>
+              <button
+                onClick={() => setPaymentType('partial')}
+                className={`flex flex-col p-3 rounded-xl border text-left transition-colors relative overflow-hidden ${paymentType === 'partial' ? 'bg-blue-900/20 border-blue-500' : 'bg-[#1a1a24] border-gray-800 hover:border-gray-700'}`}
+              >
+                {paymentType === 'partial' && <div className="absolute top-0 right-0 w-8 h-8 bg-blue-500/20 rounded-bl-full"></div>}
+                <span className={`text-xs font-medium ${paymentType === 'partial' ? 'text-blue-400' : 'text-gray-400'}`}>Deposit (50%)</span>
+                <span className="text-lg font-bold text-gray-100">₱{partialAmount.toLocaleString()}</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {shouldForceFullPayment && (
+          <div className="p-4 bg-[#1a1a24] border border-gray-800 rounded-xl space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-400">Amount due</span>
+              <span className="text-xl font-bold text-gray-100">₱{bookingInfo.totalAmount.toLocaleString()}</span>
+            </div>
+            {partialPaymentUsed && !fullPaymentOnly && (
+              <p className="text-xs text-amber-400">A verified deposit already exists for this booking. The next payment must settle the full remaining balance.</p>
+            )}
+          </div>
+        )}
 
         {/* Payment Method */}
         <div className="space-y-3">
           <label className="text-sm font-medium text-gray-300">Select Method</label>
           <div className="grid grid-cols-2 gap-2">
-            {[
-              { id: 'gcash', name: 'GCash', color: 'bg-blue-600' },
-              { id: 'maya', name: 'Maya', color: 'bg-green-600' },
-              { id: 'bank_transfer', name: 'Bank Transfer', color: 'bg-indigo-600' },
-              { id: 'cash', name: 'Cash', color: 'bg-amber-600' }
-            ].map(method => (
+            {paymentMethods.map(method => (
               <label key={method.id} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === method.id ? 'bg-[#1a1a24] border-gray-600' : 'bg-[#14141a] border-gray-800 hover:bg-[#1a1a24]'
                 }`}>
                 <div className="flex items-center gap-2">
@@ -134,18 +149,19 @@ const PaymentModal = ({ bookingInfo, onClose, onConfirm }) => {
         </div>
 
         <div className="pt-4 flex gap-3">
-          <Button variant="ghost" onClick={onClose} className="flex-1">Back</Button>
+          <Button variant="ghost" onClick={onClose} className="flex-1" disabled={loading}>Back</Button>
           <Button
             className="flex-1"
+            disabled={loading}
             onClick={() => onConfirm({
-              paymentStatus: paymentProofFile ? 'for_verification' : (paymentType === 'full' ? 'paid' : 'partial'),
+              paymentStatus: paymentType === 'full' ? 'paid' : 'partial',
               paidAmount: amountToPay,
               paymentMethod,
               paymentNotes,
               paymentProofFile,
             })}
           >
-            Pay ₱{amountToPay.toLocaleString()}
+            {loading ? 'Processing...' : `Pay ₱${amountToPay.toLocaleString()}`}
           </Button>
         </div>
       </div>

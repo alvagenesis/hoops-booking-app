@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { MOCK_TIME_SLOT_CONFIGS, MOCK_SCHEDULE_BLOCKS } from '../lib/constants';
 import { formatLocalDate } from '../lib/utils';
+import { useGlobalLoading } from '../contexts/LoadingContext';
 
 export function useTimeSlots(courtId) {
     const [configs, setConfigs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [scheduleBlocks, setScheduleBlocks] = useState([]);
+    const { track } = useGlobalLoading();
 
     useEffect(() => {
         async function fetchConfigs() {
@@ -19,35 +21,37 @@ export function useTimeSlots(courtId) {
                 return;
             }
 
-            const [{ data, error }, { data: blockData, error: blockError }] = await Promise.all([
-                supabase
-                    .from('time_slot_configs')
-                    .select('*')
-                    .eq('court_id', courtId)
-                    .eq('is_active', true)
-                    .order('day_of_week'),
-                supabase
-                    .from('schedule_blocks')
-                    .select('*')
-                    .eq('court_id', courtId)
-                    .order('date'),
-            ]);
+            await track(async () => {
+                const [{ data, error }, { data: blockData, error: blockError }] = await Promise.all([
+                    supabase
+                        .from('time_slot_configs')
+                        .select('*')
+                        .eq('court_id', courtId)
+                        .eq('is_active', true)
+                        .order('day_of_week'),
+                    supabase
+                        .from('schedule_blocks')
+                        .select('*')
+                        .eq('court_id', courtId)
+                        .order('date'),
+                ]);
 
-            if (!error && data) {
-                setConfigs(data);
-            } else {
-                setConfigs(MOCK_TIME_SLOT_CONFIGS.filter(c => c.court_id === courtId));
-            }
+                if (!error && data) {
+                    setConfigs(data);
+                } else {
+                    setConfigs(MOCK_TIME_SLOT_CONFIGS.filter(c => c.court_id === courtId));
+                }
 
-            if (!blockError && blockData) {
-                setScheduleBlocks(blockData);
-            } else {
-                setScheduleBlocks([]);
-            }
+                if (!blockError && blockData) {
+                    setScheduleBlocks(blockData);
+                } else {
+                    setScheduleBlocks([]);
+                }
+            });
             setLoading(false);
         }
         fetchConfigs();
-    }, [courtId]);
+    }, [courtId, track]);
 
     // Generate time slot strings for a specific day of week
     const getSlotsForDay = useCallback((dayOfWeek) => {
@@ -85,36 +89,13 @@ export function useTimeSlots(courtId) {
                 .map(b => ({ start_time: b.start_time, end_time: b.end_time, source: 'block', reason: b.reason }));
         }
 
-        const { data: reservationsData } = await supabase
-            .from('reservations')
-            .select('id, start_time, end_time, status')
-            .eq('court_id', courtId)
-            .not('status', 'in', '(cancelled,no_show)')
-            .order('start_time');
+        const { data, error } = await supabase.rpc('get_booked_slots', {
+            p_court_id: courtId,
+            p_date: dateStr,
+        });
 
-        const { data: dayData, error: dayError } = await supabase
-            .from('reservation_days')
-            .select('reservation_id')
-            .eq('date', dateStr);
-
-        const { data: blockData } = await supabase
-            .from('schedule_blocks')
-            .select('start_time, end_time, reason, block_type')
-            .eq('court_id', courtId)
-            .eq('date', dateStr)
-            .order('start_time');
-
-
-        if (dayError || !dayData) return blockData || [];
-
-        const resIds = dayData.map(d => d.reservation_id);
-        const dayReservations = (reservationsData || [])
-            .filter(r => resIds.includes(r.id))
-            .map(r => ({ ...r, source: 'reservation' }));
-
-        const dayBlocks = (blockData || []).map(block => ({ ...block, source: 'block' }));
-
-        return [...dayReservations, ...dayBlocks];
+        if (error || !data) return [];
+        return data;
     }, [courtId]);
 
     return { configs, loading, scheduleBlocks, getSlotsForDay, getBookedSlotsForDay };

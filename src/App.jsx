@@ -17,9 +17,11 @@ import {
   CreditCard,
   TrendingUp,
   DollarSign,
+  Package,
 } from 'lucide-react';
 import Button from './components/ui/Button';
 import NavItem from './components/NavItem';
+import PageProgressBar from './components/PageProgressBar';
 import { useAuth } from './hooks/useAuth';
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
@@ -33,6 +35,7 @@ import SchedulePage from './pages/SchedulePage';
 import TransactionsPage from './pages/TransactionsPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
 import MyBookingPage from './pages/MyBookingPage';
+import AmenitiesPage from './pages/AmenitiesPage';
 import { venueConfig } from './lib/venueConfig';
 
 function AppLayout() {
@@ -58,6 +61,7 @@ function AppLayout() {
     if (location.pathname.startsWith('/transactions')) return 'Revenue & Transactions';
     if (location.pathname.startsWith('/book')) return 'Book a Court';
     if (location.pathname.startsWith('/my-bookings')) return 'My Bookings';
+    if (location.pathname.startsWith('/amenities')) return 'Amenities';
     return 'Dashboard';
   };
 
@@ -95,6 +99,7 @@ function AppLayout() {
             <div className="space-y-1">
               <p className="px-3 text-xs font-semibold tracking-wider text-gray-500 uppercase mb-2">Management</p>
               <NavItem icon={MapPin} label="Manage Courts" to="/courts" />
+              <NavItem icon={Package} label="Amenities" to="/amenities" />
               <NavItem icon={Clock} label="Facility Schedule" to="/schedule" />
               <NavItem icon={DollarSign} label="Revenue & Transactions" to="/transactions" />
               <NavItem icon={Users} label="Members" to="/members" />
@@ -122,6 +127,8 @@ function AppLayout() {
         </div>
       </aside>
 
+      <PageProgressBar />
+
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Top Header */}
@@ -143,7 +150,7 @@ function AppLayout() {
         </header>
 
         {/* Dynamic View Content */}
-        <div className="flex-1 overflow-auto p-3 sm:p-6">
+        <div key={location.key} className="page-enter flex-1 overflow-auto p-3 sm:p-6">
           <Outlet />
         </div>
       </main>
@@ -173,18 +180,19 @@ export default function App() {
         <Route path="/book" element={<BookingPage />} />
         <Route path="/booking-success" element={<BookingSuccessPage />} />
         <Route path="/my-booking" element={<MyBookingPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
       </Route>
 
       <Route element={user ? <AppLayout /> : <Navigate to="/login" />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/my-bookings" element={<MyBookingsPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
 
         {/* Admin only routes */}
         <Route path="/members" element={isAdmin ? <MembersPage /> : <Navigate to="/dashboard" />} />
         <Route path="/courts" element={isAdmin ? <CourtsPage /> : <Navigate to="/dashboard" />} />
         <Route path="/schedule" element={isAdmin ? <SchedulePage /> : <Navigate to="/dashboard" />} />
         <Route path="/transactions" element={isAdmin ? <TransactionsPage /> : <Navigate to="/dashboard" />} />
+        <Route path="/amenities" element={isAdmin ? <AmenitiesPage /> : <Navigate to="/dashboard" />} />
 
         <Route path="/profile" element={<ProfilePage />} />
       </Route>

@@ -1,19 +1,24 @@
 import { useState } from 'react';
-import { Calendar, Clock, MapPin, X, Loader2, CreditCard, DollarSign } from 'lucide-react';
+import { Calendar, Clock, CreditCard, DollarSign, Hash, History, User, X } from 'lucide-react';
 import { useReservations } from '../hooks/useReservations';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import Button from '../components/ui/Button';
 import PaymentModal from '../modals/PaymentModal';
-
+import ReservationDetailModal from '../modals/ReservationDetailModal';
+import { canSubmitPayment, getPaymentReviewMeta, normalizePaymentState } from '../lib/paymentUtils';
+import ModalOverlay from '../components/ui/ModalOverlay';
 const TABS = ['upcoming', 'past', 'cancelled'];
 
 const MyBookingsPage = () => {
     const navigate = useNavigate();
-    const { reservations, loading, cancelReservation, payReservation } = useReservations();
+    const { role } = useAuth();
+    const { reservations, loading, lastUpdatedAt, cancelReservation, updateReservation, payReservation } = useReservations();
     const [activeTab, setActiveTab] = useState('upcoming');
     const [detailId, setDetailId] = useState(null);
     const [cancelling, setCancelling] = useState(null);
     const [pendingPaymentRes, setPendingPaymentRes] = useState(null);
+    const [logReservation, setLogReservation] = useState(null);
     const [isPaying, setIsPaying] = useState(false);
 
     const now = new Date();
@@ -91,6 +96,9 @@ const MyBookingsPage = () => {
                 <div>
                     <h2 className="text-lg font-semibold text-gray-100">My Bookings</h2>
                     <p className="text-sm text-gray-500">{reservations.length} total booking{reservations.length !== 1 ? 's' : ''}</p>
+                    {role === 'admin' && lastUpdatedAt && (
+                        <p className="text-xs text-gray-600 mt-1">Last updated {formatLastUpdated(lastUpdatedAt)}</p>
+                    )}
                 </div>
                 <Button onClick={() => navigate('/book')} className="gap-2">
                     <Calendar className="w-4 h-4" /> New Booking
@@ -137,7 +145,7 @@ const MyBookingsPage = () => {
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
                                             <p className="text-xs text-gray-500">{court.name || 'Unknown Court'}</p>
-                                            <PaymentBadge status={res.payment_status} />
+                                            <PaymentBadge status={normalizePaymentState(res).payment_status} reviewStatus={normalizePaymentState(res).payment_review_status} />
                                         </div>
                                         <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
                                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{firstDate || '—'}{dates.length > 1 && ` +${dates.length - 1} more`}</span>
@@ -148,7 +156,7 @@ const MyBookingsPage = () => {
                                         <p className="text-sm font-bold text-gray-100">₱{(res.total_amount || 0).toLocaleString()}</p>
                                     </div>
                                 </div>
-                                {(res.status === 'pending' || res.status === 'confirmed' || res.status === 'awaiting_payment') && activeTab === 'upcoming' && (
+                                {(['pending_verification', 'pending', 'confirmed', 'awaiting_payment'].includes(res.status)) && activeTab === 'upcoming' && (
                                     <div className="mt-3 pt-3 border-t border-gray-800 flex justify-between items-center">
                                         <div className="text-[10px] text-gray-500">
                                             {res.payment_status !== 'paid' && (
@@ -156,12 +164,12 @@ const MyBookingsPage = () => {
                                             )}
                                         </div>
                                         <div className="flex gap-3">
-                                            {res.payment_status !== 'paid' && (
+                                            {canSubmitPayment(normalizePaymentState(res)) && (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setPendingPaymentRes(res); }}
                                                     className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors flex items-center gap-1"
                                                 >
-                                                    <CreditCard className="w-3 h-3" /> Pay Now
+                                                    <CreditCard className="w-3 h-3" /> {res.status === 'confirmed' && res.payment_status === 'partial' && (res.paid_amount || 0) > 0 ? 'Pay Balance' : 'Resubmit'}
                                                 </button>
                                             )}
                                             <button
@@ -170,6 +178,12 @@ const MyBookingsPage = () => {
                                                 className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
                                             >
                                                 {cancelling === res.id ? 'Cancelling...' : 'Cancel Booking'}
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setLogReservation(res); }}
+                                                className="text-xs text-gray-300 hover:text-white font-medium transition-colors flex items-center gap-1"
+                                            >
+                                                <History className="w-3 h-3" /> View Logs
                                             </button>
                                         </div>
                                     </div>
@@ -180,14 +194,24 @@ const MyBookingsPage = () => {
                 )}
             </div>
 
-            {/* Detail Sheet */}
+            {/* Detail Modal */}
             {detailRes && (
-                <DetailSheet
+                <ReservationDetailModal
                     reservation={detailRes}
                     onClose={() => setDetailId(null)}
-                    onCancel={handleCancel}
-                    onPay={() => setPendingPaymentRes(detailRes)}
-                    cancelling={cancelling}
+                    onCancel={(id) => { handleCancel(id); setDetailId(null); }}
+                    onAdminUpdate={role === 'admin' ? async (id, updates) => {
+                        await updateReservation(id, updates);
+                        setDetailId(null);
+                    } : undefined}
+                    onPay={(res) => { setPendingPaymentRes(res); setDetailId(null); }}
+                />
+            )}
+
+            {logReservation && (
+                <BookingLogsModal
+                    reservation={logReservation}
+                    onClose={() => setLogReservation(null)}
                 />
             )}
 
@@ -200,131 +224,192 @@ const MyBookingsPage = () => {
                     }}
                     onClose={() => setPendingPaymentRes(null)}
                     onConfirm={handleConfirmPayment}
+                    loading={isPaying}
+                    fullPaymentOnly={pendingPaymentRes.status === 'confirmed' && pendingPaymentRes.payment_status === 'partial' && (pendingPaymentRes.paid_amount || 0) > 0}
+                    partialPaymentUsed={pendingPaymentRes.status === 'confirmed' && pendingPaymentRes.payment_status === 'partial' && (pendingPaymentRes.paid_amount || 0) > 0}
                 />
             )}
         </div>
     );
 };
 
-function DetailSheet({ reservation, onClose, onCancel, onPay, cancelling }) {
-    const court = reservation.courts || {};
-    const dates = reservation.reservation_days || [];
+function BookingLogsModal({ reservation, onClose }) {
+    const logs = [...(reservation?.booking_logs || [])]
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const customerName = getReservationCustomerName(reservation);
+    const referenceNumber = getReservationReferenceNumber(reservation);
 
     return (
-        <div className="fixed inset-0 z-50 flex justify-end">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-md bg-[#111116] border-l border-gray-800 h-full overflow-y-auto p-6 space-y-5 animate-slide-in">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-gray-100">Booking Details</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
+        <ModalOverlay onClose={onClose} panelClassName="max-w-2xl">
+            <div className="flex justify-between items-center p-6 border-b border-gray-800 bg-[#16161c] rounded-t-2xl">
+                <h3 className="text-lg font-semibold text-gray-100 flex items-center gap-2">
+                    <History className="w-5 h-5 text-blue-400" /> Booking Logs
+                </h3>
+                <button aria-label="Close" onClick={onClose} className="text-gray-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                </button>
+            </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-14 rounded-full" style={{ backgroundColor: court.color || '#666' }} />
-                    <div>
-                        <p className="font-semibold text-gray-100">{reservation.title || 'Court Booking'}</p>
-                        <p className="text-sm text-gray-500">{court.name || 'Unknown Court'}</p>
+            <div className="p-6 space-y-4">
+                <div>
+                    <p className="text-sm font-medium text-gray-100">{reservation?.title || 'Court Booking'}</p>
+                    <p className="text-xs text-gray-500 mt-1">Tracking booking changes and payment milestones.</p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                        <span className="inline-flex items-center gap-1.5 max-w-full rounded-md border border-gray-800 bg-[#111116] px-2 py-1 text-xs text-gray-300">
+                            <User className="w-3 h-3 text-gray-500 shrink-0" />
+                            <span className="truncate">{customerName}</span>
+                        </span>
+                        {referenceNumber && (
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-800 bg-[#111116] px-2 py-1 text-xs font-mono text-gray-300">
+                                <Hash className="w-3 h-3 text-gray-500 shrink-0" />
+                                {referenceNumber}
+                            </span>
+                        )}
                     </div>
                 </div>
 
-                <div className="space-y-3">
-                    <InfoRow icon={Clock} label="Time" value={`${reservation.start_time} – ${reservation.end_time}`} />
-                    <InfoRow icon={Calendar} label="Status"><StatusBadge status={reservation.status} /></InfoRow>
-                    <InfoRow icon={DollarSign} label="Payment"><PaymentBadge status={reservation.payment_status} /></InfoRow>
-                    {reservation.customer_name && <InfoRow icon={MapPin} label="Booked By" value={reservation.customer_name} />}
-                    {reservation.customer_phone && <InfoRow icon={MapPin} label="Phone" value={reservation.customer_phone} />}
-                    {reservation.customer_email && <InfoRow icon={MapPin} label="Email" value={reservation.customer_email} />}
-                    <div>
-                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Dates</p>
-                        <div className="space-y-1">
-                            {dates.map(d => (
-                                <div key={d.id} className="text-sm text-gray-300 bg-[#16161c] rounded px-3 py-1.5">
-                                    {new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                {logs.length === 0 ? (
+                    <div className="bg-[#111116] border border-gray-800 rounded-xl p-4 text-sm text-gray-400">
+                        No booking logs found yet.
+                    </div>
+                ) : (
+                    <div className="bg-[#111116] border border-gray-800 rounded-xl p-5 space-y-4">
+                        {logs.map((log, index) => (
+                            <div key={log.id ?? `${log.event_type}-${index}`} className="flex gap-3">
+                                <div className="flex flex-col items-center">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-blue-400 mt-1.5" />
+                                    {index < logs.length - 1 && <div className="w-px flex-1 bg-gray-800 mt-2" />}
                                 </div>
-                            ))}
-                        </div>
+                                <div className="min-w-0 pb-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-medium text-gray-100">{log.title || 'Booking update'}</p>
+                                        {(getLogActorLabel(log) || log.created_at) && (
+                                            <span className="text-[11px] text-gray-500">
+                                                {formatLogMeta(log)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {log.description && (
+                                        <p className="text-xs text-gray-400 mt-1 leading-relaxed">{log.description}</p>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                    {reservation.notes && <InfoRow icon={MapPin} label="Notes" value={reservation.notes} />}
-                    {reservation.payment_notes && <InfoRow icon={CreditCard} label="Payment" value={reservation.payment_notes} />}
-                    {reservation.payment_proof_url && (
-                        <div className="text-sm">
-                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-2">Payment Proof</p>
-                            <a href={reservation.payment_proof_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300">
-                                View uploaded proof
-                            </a>
-                        </div>
-                    )}
-                    <div className="border-t border-gray-800 pt-3 space-y-2">
-                        <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Total Amount</span>
-                            <span className="font-bold text-gray-100">₱{(reservation.total_amount || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Paid to date</span>
-                            <span className="font-medium text-green-400">₱{(reservation.paid_amount || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between text-xs pt-1">
-                            <span className="text-gray-500 italic">Remaining Balance</span>
-                            <span className="text-gray-300 font-semibold">₱{((reservation.total_amount || 0) - (reservation.paid_amount || 0)).toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
+                )}
 
-                <div className="pt-4 space-y-3">
-                    {reservation.payment_status !== 'paid' && (reservation.status === 'pending' || reservation.status === 'confirmed' || reservation.status === 'awaiting_payment') && (
-                        <Button
-                            onClick={onPay}
-                            className="w-full gap-2"
-                        >
-                            <CreditCard className="w-4 h-4" /> Pay Balance
-                        </Button>
-                    )}
-                    {(reservation.status === 'pending' || reservation.status === 'confirmed' || reservation.status === 'awaiting_payment') && (
-                        <button
-                            onClick={() => onCancel(reservation.id)}
-                            disabled={cancelling === reservation.id}
-                            className="w-full py-2.5 text-sm font-medium text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/10 transition-colors"
-                        >
-                            {cancelling === reservation.id ? 'Cancelling...' : 'Cancel Booking'}
-                        </button>
-                    )}
+                <div className="flex justify-end pt-2">
+                    <Button variant="ghost" onClick={onClose}>Close</Button>
                 </div>
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 
-// eslint-disable-next-line no-unused-vars
-function InfoRow({ icon: Icon, label, value, children }) {
-    return (
-        <div className="flex items-center gap-3 text-sm">
-            <Icon className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <span className="text-gray-400 w-16">{label}</span>
-            {children || <span className="text-gray-200">{value}</span>}
-        </div>
-    );
+function getLogActorLabel(log) {
+    const metadata = log?.metadata || {};
+    const actorName = typeof metadata.actor_name === 'string' ? metadata.actor_name.trim() : '';
+
+    if (!actorName) {
+        return '';
+    }
+
+    return actorName;
 }
 
-function PaymentBadge({ status }) {
+function formatLogMeta(log) {
+    const actorLabel = getLogActorLabel(log);
+    const timestamp = formatLogTimestamp(log?.created_at);
+
+    if (actorLabel && timestamp) {
+        return `by ${actorLabel} - ${timestamp}`;
+    }
+
+    if (actorLabel) {
+        return `by ${actorLabel}`;
+    }
+
+    return timestamp;
+}
+
+function getReservationCustomerName(reservation) {
+    const name = reservation?.customer_name?.trim();
+
+    if (name) {
+        return reservation?.is_guest_booking ? `${name} (guest)` : name;
+    }
+
+    if (reservation?.user_id) {
+        return `User ...${reservation.user_id.slice(-6)}`;
+    }
+
+    return 'Guest';
+}
+
+function getReservationReferenceNumber(reservation) {
+    if (!reservation?.id) {
+        return '';
+    }
+
+    return reservation.id.replace(/-/g, '').slice(0, 8).toUpperCase();
+}
+
+function formatLogTimestamp(value) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const dateLabel = date.toLocaleDateString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: '2-digit',
+    });
+    const timeLabel = date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+    }).toLowerCase();
+
+    return `${dateLabel.replace(/\//g, '.')} ${timeLabel}`;
+}
+
+function formatLastUpdated(value) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+    }).toLowerCase();
+}
+
+
+function PaymentBadge({ status, reviewStatus }) {
     if (!status) return null;
     const styles = {
         unpaid: 'bg-red-500/10 text-red-400 border-red-500/20',
         partial: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-        for_verification: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
         paid: 'bg-green-500/10 text-green-400 border-green-500/20',
-        rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
     };
+    const reviewMeta = getPaymentReviewMeta(reviewStatus);
     return (
-        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight border ${styles[status]}`}>
-            <DollarSign className="w-2.5 h-2.5" /> {status}
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight border ${styles[status] || styles.unpaid}`}>
+            <DollarSign className="w-2.5 h-2.5" /> {status} {reviewStatus === 'pending' ? `· ${reviewMeta.text}` : ''}
         </span>
     );
 }
 
 function StatusBadge({ status }) {
     const styles = {
+        pending_verification: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
         pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
         awaiting_payment: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
         confirmed: 'bg-green-500/10 text-green-400 border-green-500/20',
@@ -333,7 +418,7 @@ function StatusBadge({ status }) {
         no_show: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
     };
     return (
-        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${styles[status] || styles.pending}`}>
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${styles[status] || styles.pending_verification}`}>
             {status}
         </span>
     );

@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { useGlobalLoading } from '../contexts/LoadingContext';
 
 export function useSchedule(courtId) {
     const [configs, setConfigs] = useState([]);
     const [scheduleBlocks, setScheduleBlocks] = useState([]);
     const [loading, setLoading] = useState(true);
+    const { track } = useGlobalLoading();
 
     const fetchConfigs = useCallback(async () => {
         if (!courtId) return;
         setLoading(true);
 
         if (!supabase) {
-            // Mock default configs for all 7 days if no supabase
             const mockConfigs = Array.from({ length: 7 }, (_, i) => ({
                 id: `mock-${i}`,
                 court_id: courtId,
@@ -27,27 +28,25 @@ export function useSchedule(courtId) {
             return;
         }
 
-        const [{ data, error }, { data: blockData, error: blockError }] = await Promise.all([
-            supabase
-                .from('time_slot_configs')
-                .select('*')
-                .eq('court_id', courtId)
-                .order('day_of_week'),
-            supabase
-                .from('schedule_blocks')
-                .select('*')
-                .eq('court_id', courtId)
-                .order('date', { ascending: true }),
-        ]);
+        await track(async () => {
+            const [{ data, error }, { data: blockData, error: blockError }] = await Promise.all([
+                supabase
+                    .from('time_slot_configs')
+                    .select('*')
+                    .eq('court_id', courtId)
+                    .order('day_of_week'),
+                supabase
+                    .from('schedule_blocks')
+                    .select('*')
+                    .eq('court_id', courtId)
+                    .order('date', { ascending: true }),
+            ]);
 
-        if (!error && data) {
-            setConfigs(data);
-        }
-        if (!blockError && blockData) {
-            setScheduleBlocks(blockData);
-        }
+            if (!error && data) setConfigs(data);
+            if (!blockError && blockData) setScheduleBlocks(blockData);
+        });
         setLoading(false);
-    }, [courtId]);
+    }, [courtId, track]);
 
     useEffect(() => {
         fetchConfigs();
@@ -72,20 +71,27 @@ export function useSchedule(courtId) {
     }
 
     async function bulkUpdateSlots(updates) {
-        // updates is expected to be an array of objects with { id, ...fields }
         if (!supabase) {
-            setConfigs(prev => prev.map(c => {
-                const u = updates.find(update => update.id === c.id);
-                return u ? { ...c, ...u } : c;
-            }));
+            setConfigs(prev => {
+                // If configs already exist, update them; otherwise store the new defaults
+                if (prev.length > 0) {
+                    return prev.map(c => {
+                        const u = updates.find(update => update.day_of_week === c.day_of_week);
+                        return u ? { ...c, ...u } : c;
+                    });
+                }
+                return updates.map(u => ({ id: crypto.randomUUID(), ...u }));
+            });
             return;
         }
 
-        const promises = updates.map(u =>
-            supabase.from('time_slot_configs').update(u).eq('id', u.id)
-        );
+        // Upsert on (court_id, day_of_week) — works for both existing rows (update)
+        // and new courts that have no configs yet (insert).
+        const { error } = await supabase
+            .from('time_slot_configs')
+            .upsert(updates, { onConflict: 'court_id,day_of_week' });
 
-        await Promise.all(promises);
+        if (error) throw error;
         await fetchConfigs();
     }
 

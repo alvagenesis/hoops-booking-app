@@ -25,3 +25,12 @@ export const isDateInRange = (date, start, end) => {
   const e = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
   return d >= s && d <= e;
 };
+
+export const normalizePhone = (value = '') => {
+  const digits = String(value).replace(/\D/g, '');
+
+  if (!digits) return '';
+  if (digits.startsWith('63') && digits.length === 12) return `0${digits.slice(2)}`;
+  if (digits.startsWith('9') && digits.length === 10) return `0${digits}`;
+  return digits;
+};

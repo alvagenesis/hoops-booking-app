@@ -21,9 +21,11 @@ const DashboardPage = () => {
 
   const isAdmin = role === 'admin';
 
+  const sortByLatestReservationDate = (a, b) => getSortTimestamp(b) - getSortTimestamp(a);
+
   const displayBookings = isAdmin
-    ? [...reservations].sort((a, b) => new Date(b.start_date || b.start) - new Date(a.start_date || a.start)).slice(0, 5)
-    : [...reservations].filter(r => r.user_id === user?.id).sort((a, b) => new Date(b.start_date || b.start) - new Date(a.start_date || a.start)).slice(0, 5);
+    ? [...reservations].sort(sortByLatestReservationDate).slice(0, 5)
+    : [...reservations].filter(r => r.user_id === user?.id).sort(sortByLatestReservationDate).slice(0, 5);
 
   const now = new Date();
   const currentMonth = now.getMonth();
@@ -36,8 +38,8 @@ const DashboardPage = () => {
 
   const totalRevenue = monthlyReservations.reduce((sum, r) => sum + (r.paid_amount || 0), 0);
   const bookingCount = monthlyReservations.length;
-  const pendingBookings = reservations.filter(r => ['pending', 'awaiting_payment'].includes(r.status)).length;
-  const pendingPayments = reservations.filter(r => ['unpaid', 'partial', 'for_verification'].includes(r.payment_status)).length;
+  const pendingBookings = reservations.filter(r => ['pending_verification', 'pending', 'awaiting_payment'].includes(r.status)).length;
+  const pendingPayments = reservations.filter(r => ['unpaid', 'partial'].includes(r.payment_status) || r.payment_review_status === 'pending').length;
   const userPaidTotal = displayBookings.reduce((sum, r) => sum + (r.paid_amount || 0), 0);
 
   return (
@@ -45,7 +47,7 @@ const DashboardPage = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard title="Total Courts" value={courts.length} icon={MapPin} trend={`${courts.length} active`} />
         <StatCard title={isAdmin ? 'Bookings (This Month)' : 'My Total Bookings'} value={isAdmin ? bookingCount : displayBookings.length} icon={CalendarIcon} trend={isAdmin ? (bookingCount > 0 ? 'Active' : 'No bookings yet') : 'Your activity'} />
-        <StatCard title={isAdmin ? 'Pending Bookings' : 'Pending Payments'} value={isAdmin ? pendingBookings : displayBookings.filter(r => ['unpaid', 'partial', 'for_verification'].includes(r.payment_status)).length} icon={Clock} trend={isAdmin ? 'Needs review' : 'Settle before play'} />
+        <StatCard title={isAdmin ? 'Pending Bookings' : 'Pending Payments'} value={isAdmin ? pendingBookings : displayBookings.filter(r => ['unpaid', 'partial'].includes(r.payment_status) || r.payment_review_status === 'pending').length} icon={Clock} trend={isAdmin ? 'Needs review' : 'Settle before play'} />
         <StatCard title={isAdmin ? 'Revenue (MTD)' : 'Amount Paid'} value={isAdmin ? `₱ ${totalRevenue.toLocaleString()}` : `₱ ${userPaidTotal.toLocaleString()}`} icon={CreditCard} trend={isAdmin ? `${pendingPayments} payment cases open` : 'Tracked automatically'} />
       </div>
 
@@ -127,6 +129,14 @@ const DashboardPage = () => {
   );
 };
 
+function getSortTimestamp(reservation) {
+  const { end, start } = getReservationDateRange(reservation);
+  if (end) return end.getTime();
+  if (start) return start.getTime();
+  const created = reservation?.created_at ? new Date(reservation.created_at) : null;
+  return created && !Number.isNaN(created.getTime()) ? created.getTime() : 0;
+}
+
 function getReservationDateRange(reservation) {
   if (reservation?.reservation_days?.length) {
     const sortedDates = reservation.reservation_days
@@ -153,6 +163,8 @@ function statusBadgeStyles(status) {
   switch (status) {
     case 'confirmed':
       return 'bg-green-500/10 text-green-400';
+    case 'pending_verification':
+      return 'bg-yellow-500/10 text-yellow-400';
     case 'awaiting_payment':
       return 'bg-orange-500/10 text-orange-400';
     case 'completed':

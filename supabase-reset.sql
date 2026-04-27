@@ -8,11 +8,13 @@ BEGIN;
 -- ============================================================
 -- 1. TRUNCATE DATA TABLES (order respects foreign keys)
 -- ============================================================
-TRUNCATE public.reservation_days  RESTART IDENTITY CASCADE;
-TRUNCATE public.reservations      RESTART IDENTITY CASCADE;
-TRUNCATE public.schedule_blocks   RESTART IDENTITY CASCADE;
-TRUNCATE public.time_slot_configs RESTART IDENTITY CASCADE;
-TRUNCATE public.courts            RESTART IDENTITY CASCADE;
+TRUNCATE public.reservation_addons RESTART IDENTITY CASCADE;
+TRUNCATE public.reservation_days   RESTART IDENTITY CASCADE;
+TRUNCATE public.reservations       RESTART IDENTITY CASCADE;
+TRUNCATE public.schedule_blocks    RESTART IDENTITY CASCADE;
+TRUNCATE public.time_slot_configs  RESTART IDENTITY CASCADE;
+TRUNCATE public.courts             RESTART IDENTITY CASCADE;
+TRUNCATE public.amenities          RESTART IDENTITY CASCADE;
 
 -- ============================================================
 -- 2. CLEAR STORAGE BUCKETS

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Save, Loader2, AlertCircle, Calendar as CalendarIcon, Settings2, ShieldCheck, Plus, Trash2, Ban } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Save, Loader2, AlertCircle, Calendar as CalendarIcon, Settings2, ShieldCheck, Plus, Trash2, Ban, ChevronDown, MapPin } from 'lucide-react';
 import { useCourts } from '../hooks/useCourts';
 import { useSchedule } from '../hooks/useSchedule';
 import Button from '../components/ui/Button';
@@ -23,6 +23,18 @@ const SchedulePage = () => {
     const [successMsg, setSuccessMsg] = useState('');
     const [blockForm, setBlockForm] = useState(EMPTY_BLOCK_FORM);
     const [blockSubmitting, setBlockSubmitting] = useState(false);
+    const [courtDropdownOpen, setCourtDropdownOpen] = useState(false);
+    const courtDropdownRef = useRef(null);
+
+    useEffect(() => {
+        function handleClickOutside(e) {
+            if (courtDropdownRef.current && !courtDropdownRef.current.contains(e.target)) {
+                setCourtDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         if (courts.length > 0 && !selectedCourtId) {
@@ -33,8 +45,21 @@ const SchedulePage = () => {
     useEffect(() => {
         if (configs.length > 0) {
             setEditingConfigs(JSON.parse(JSON.stringify(configs)));
+        } else if (selectedCourtId && !loadingSchedule) {
+            // Court exists but has no time slot configs yet (e.g. added via /courts after initial setup).
+            // Pre-populate 7 default rows so the admin can edit and save immediately.
+            setEditingConfigs(
+                Array.from({ length: 7 }, (_, i) => ({
+                    court_id: selectedCourtId,
+                    day_of_week: i,
+                    start_time: '06:00',
+                    end_time: '22:00',
+                    slot_duration_minutes: 60,
+                    is_active: true,
+                }))
+            );
         }
-    }, [configs]);
+    }, [configs, selectedCourtId, loadingSchedule]);
 
     const handleFieldChange = (dayIndex, field, value) => {
         const newConfigs = [...editingConfigs];
@@ -124,19 +149,36 @@ const SchedulePage = () => {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 bg-[#111116] p-1.5 rounded-xl border border-gray-800 overflow-x-auto flex-nowrap">
-                    {courts.map(court => (
-                        <button
-                            key={court.id}
-                            onClick={() => setSelectedCourtId(court.id)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedCourtId === court.id
-                                ? 'bg-blue-600 text-white shadow-lg'
-                                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-                                }`}
-                        >
-                            {court.name}
-                        </button>
-                    ))}
+                <div className="relative" ref={courtDropdownRef}>
+                    <button
+                        onClick={() => setCourtDropdownOpen(o => !o)}
+                        className="flex items-center gap-2.5 px-4 py-2.5 bg-[#111116] border border-gray-800 rounded-xl text-sm font-medium text-gray-200 hover:border-gray-700 transition-colors min-w-[220px]"
+                    >
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedCourt?.color ?? '#6b7280' }} />
+                        <span className="flex-1 text-left truncate">{selectedCourt?.name ?? 'Select court'}</span>
+                        <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${courtDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {courtDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-64 bg-[#111116] border border-gray-800 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
+                            {courts.map(court => (
+                                <button
+                                    key={court.id}
+                                    onClick={() => { setSelectedCourtId(court.id); setCourtDropdownOpen(false); }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2 mx-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                                        selectedCourtId === court.id
+                                            ? 'bg-blue-600/10 text-blue-400'
+                                            : 'text-gray-400 hover:bg-[#1a1a24] hover:text-gray-200'
+                                    }`}
+                                    style={{ width: 'calc(100% - 12px)' }}
+                                >
+                                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: court.color ?? '#6b7280' }} />
+                                    <span className="truncate">{court.name}</span>
+                                    {selectedCourtId === court.id && <MapPin className="w-3.5 h-3.5 ml-auto shrink-0 text-blue-400" />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -151,6 +193,13 @@ const SchedulePage = () => {
                     </Button>
                 </div>
 
+                {configs.length === 0 && editingConfigs.length > 0 && (
+                    <div className="px-6 py-3 bg-amber-500/5 border-b border-amber-500/15 text-xs text-amber-400 flex items-center gap-2">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        This court has no schedule yet. Default hours are pre-filled — adjust if needed, then click Save Schedule to activate.
+                    </div>
+                )}
+
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
@@ -164,7 +213,7 @@ const SchedulePage = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-800/50">
                             {editingConfigs.map((config, idx) => (
-                                <tr key={config.id} className={`transition-colors ${config.is_active ? 'bg-transparent' : 'bg-gray-900/20 opacity-60'}`}>
+                                <tr key={config.id ?? config.day_of_week} className={`transition-colors ${config.is_active ? 'bg-transparent' : 'bg-gray-900/20 opacity-60'}`}>
                                     <td className="px-6 py-4 font-medium text-gray-300">
                                         {DAYS_OF_WEEK[config.day_of_week] || 'Unknown'}
                                     </td>

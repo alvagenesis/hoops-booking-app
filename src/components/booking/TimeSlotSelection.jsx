@@ -1,4 +1,5 @@
 import { Clock } from 'lucide-react';
+import { getSlotTimingState } from '../../lib/timeSlotRules';
 
 const TimeSlotSelection = ({ slots, selectedSlots = [], onSelect, bookedSlots = [], hourlyRate, selectedDate }) => {
 
@@ -81,9 +82,11 @@ const TimeSlotSelection = ({ slots, selectedSlots = [], onSelect, bookedSlots = 
                         });
                         const isBlocked = matchingEntry?.source === 'block';
                         const isBooked = Boolean(matchingEntry) && !isBlocked;
-                        const isNow = isSlotTooSoon(slot.start, selectedDate);
+                        const slotTiming = getSlotTimingState(slot.start, selectedDate);
+                        const isPast = slotTiming === 'past';
+                        const isTooSoon = slotTiming === 'too-soon';
                         const isSelected = selectedSlots.some(s => s.start === slot.start && s.end === slot.end);
-                        const isDisabled = isBooked || isBlocked || isNow;
+                        const isDisabled = isBooked || isBlocked || isPast || isTooSoon;
 
                         return (
                             <button
@@ -98,7 +101,9 @@ const TimeSlotSelection = ({ slots, selectedSlots = [], onSelect, bookedSlots = 
                                             ? 'border-gray-800 bg-slate-500/10 text-gray-500 cursor-not-allowed'
                                             : isBooked
                                                 ? 'border-gray-800 bg-red-500/5 text-gray-600 cursor-not-allowed'
-                                                : isNow
+                                                : isPast
+                                                    ? 'border-gray-800 bg-gray-500/5 text-gray-600 cursor-not-allowed'
+                                                    : isTooSoon
                                                     ? 'border-gray-800 bg-yellow-500/5 text-gray-600 cursor-not-allowed'
                                                     : 'border-gray-800 bg-[#111116] text-gray-300 hover:border-gray-700 hover:bg-[#16161c]'
                                 }`}
@@ -106,7 +111,7 @@ const TimeSlotSelection = ({ slots, selectedSlots = [], onSelect, bookedSlots = 
                                 <span className="block">{slot.label}</span>
                                 {isBlocked && <span className="block text-xs text-slate-400 mt-0.5">Blocked</span>}
                                 {isBooked && !isBlocked && <span className="block text-xs text-red-400 mt-0.5">Booked</span>}
-                                {isNow && !isBooked && !isBlocked && <span className="block text-xs text-yellow-500 mt-0.5">Too soon</span>}
+                                {isTooSoon && !isBooked && !isBlocked && <span className="block text-xs text-yellow-500 mt-0.5">Too soon</span>}
                             </button>
                         );
                     })}
@@ -135,15 +140,6 @@ const TimeSlotSelection = ({ slots, selectedSlots = [], onSelect, bookedSlots = 
 function toMinutes(time) {
     const [h, m] = time.split(':').map(Number);
     return h * 60 + m;
-}
-
-function isSlotTooSoon(startTime, selectedDate) {
-    const now = new Date();
-    const slotDate = selectedDate ? new Date(selectedDate) : new Date();
-    const [h, m] = startTime.split(':').map(Number);
-    slotDate.setHours(h, m, 0, 0);
-    const isToday = slotDate.toDateString() === now.toDateString();
-    return isToday && slotDate.getTime() - now.getTime() < 60 * 60 * 1000;
 }
 
 export default TimeSlotSelection;

@@ -1,11 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import BookingPage from '../../pages/BookingPage';
 import { BrowserRouter } from 'react-router-dom';
 
-// Mock hooks
+const mockCreateReservation = vi.fn(() => Promise.resolve());
+const mockGetSlotsForDay = vi.fn(() => [
+    { start: '09:00', end: '10:00', label: '9 AM - 10 AM' }
+]);
+const mockGetBookedSlotsForDay = vi.fn(() => Promise.resolve([]));
+
 vi.mock('../../hooks/useAuth', () => ({
-    useAuth: () => ({ user: { id: 'u1' } }),
+    useAuth: () => ({ user: { id: 'u1' }, loading: false }),
 }));
 
 vi.mock('../../hooks/useCourts', () => ({
@@ -19,20 +24,17 @@ vi.mock('../../hooks/useCourts', () => ({
 
 vi.mock('../../hooks/useTimeSlots', () => ({
     useTimeSlots: () => ({
-        getSlotsForDay: vi.fn(() => [
-            { start: '09:00', end: '10:00', label: '9 AM – 10 AM' }
-        ]),
-        getBookedSlotsForDay: vi.fn(() => Promise.resolve([])),
+        getSlotsForDay: mockGetSlotsForDay,
+        getBookedSlotsForDay: mockGetBookedSlotsForDay,
     }),
 }));
 
 vi.mock('../../hooks/useReservations', () => ({
     useReservations: () => ({
-        createReservation: vi.fn(() => Promise.resolve()),
+        createReservation: mockCreateReservation,
     }),
 }));
 
-// Mock sub-components to focus on BookingPage state logic
 vi.mock('../../components/booking/CourtSelection', () => ({
     default: ({ onSelect }) => (
         <button onClick={() => onSelect({ id: 'c1', name: 'Main Indoor Court', hourly_rate: 500 })}>
@@ -50,10 +52,13 @@ vi.mock('../../components/booking/DateSelection', () => ({
 }));
 
 vi.mock('../../components/booking/TimeSlotSelection', () => ({
-    default: ({ onSelect, slots }) => (
-        <button onClick={() => onSelect(slots[0])}>
-            Select Time
-        </button>
+    default: ({ onSelect, slots, selectedSlots }) => (
+        <div>
+            <div>Selected count: {selectedSlots.length}</div>
+            <button onClick={() => onSelect([slots[0]])}>
+                Select Time
+            </button>
+        </div>
     )
 }));
 
@@ -65,15 +70,25 @@ vi.mock('../../components/booking/BookingReview', () => ({
     )
 }));
 
-const renderBookingPage = () => {
-    return render(
-        <BrowserRouter>
-            <BookingPage />
-        </BrowserRouter>
-    );
-};
+const renderBookingPage = () => render(
+    <BrowserRouter>
+        <BookingPage />
+    </BrowserRouter>
+);
 
 describe('BookingPage', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 1, 26, 8, 0));
+        mockCreateReservation.mockClear();
+        mockGetSlotsForDay.mockClear();
+        mockGetBookedSlotsForDay.mockClear();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('starts at step 0 (Court Selection)', () => {
         renderBookingPage();
         expect(screen.getByText('Court')).toHaveClass('text-gray-200');
@@ -92,21 +107,18 @@ describe('BookingPage', () => {
     it('advances through steps correctly', async () => {
         renderBookingPage();
 
-        // Step 0: Court
         fireEvent.click(screen.getByText('Select Court'));
         fireEvent.click(screen.getByText('Next'));
 
-        // Step 1: Date
         expect(screen.getByText('Date')).toHaveClass('text-gray-200');
         fireEvent.click(screen.getByText('Select Date'));
         fireEvent.click(screen.getByText('Next'));
 
-        // Step 2: Time
         expect(screen.getByText('Time')).toHaveClass('text-gray-200');
         fireEvent.click(screen.getByText('Select Time'));
         fireEvent.click(screen.getByText('Next'));
+        await act(async () => {});
 
-        // Step 3: Review
         expect(screen.getByText('Review')).toHaveClass('text-gray-200');
         expect(screen.getByText('Confirm Booking')).toBeInTheDocument();
     });
@@ -121,5 +133,28 @@ describe('BookingPage', () => {
 
         fireEvent.click(screen.getByText('Back'));
         expect(screen.getByText('Court')).toHaveClass('text-gray-200');
+    });
+
+    it('blocks advancing when a previously selected slot becomes too soon before clicking next', async () => {
+        renderBookingPage();
+
+        fireEvent.click(screen.getByText('Select Court'));
+        fireEvent.click(screen.getByText('Next'));
+        fireEvent.click(screen.getByText('Select Date'));
+        fireEvent.click(screen.getByText('Next'));
+
+        fireEvent.click(screen.getByText('Select Time'));
+        expect(screen.getByText('Selected count: 1')).toBeInTheDocument();
+
+        await act(async () => {
+            vi.setSystemTime(new Date(2026, 1, 26, 8, 31));
+        });
+        fireEvent.click(screen.getByText('Next'));
+        await act(async () => {});
+
+        expect(screen.getByText('Time')).toHaveClass('text-gray-200');
+        expect(screen.getByText('Selected count: 0')).toBeInTheDocument();
+        expect(screen.getByText('Selected time slot is no longer valid. Please choose a new slot.')).toBeInTheDocument();
+        expect(screen.queryByText('Confirm Booking')).not.toBeInTheDocument();
     });
 });

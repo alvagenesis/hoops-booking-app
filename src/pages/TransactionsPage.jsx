@@ -4,21 +4,40 @@ import { venueConfig } from '../lib/venueConfig';
 import { useReservations } from '../hooks/useReservations';
 import { formatDate, formatLocalDate } from '../lib/utils';
 import Button from '../components/ui/Button';
+import { derivePaymentStatus, getPaymentReviewMeta, normalizePaymentState } from '../lib/paymentUtils';
+
+function getAddonSummary(tx) {
+    const addons = Array.isArray(tx.reservation_addons) ? tx.reservation_addons : [];
+    const addonCount = addons.length;
+    const addonTotal = addons.reduce((sum, addon) => sum + Number(addon.price_at_booking || 0), 0);
+    const addonNames = addons
+        .map(addon => addon.amenities?.name || addon.name || addon.amenity_id)
+        .filter(Boolean)
+        .join(' | ');
+
+    return { addonCount, addonTotal, addonNames };
+}
 
 function exportToCsv(rows, filename) {
-    const headers = ['Date', 'Title', 'Court', 'Method', 'Total Amount', 'Paid Amount', 'Balance', 'Status'];
+    const headers = ['Date', 'Title', 'Court', 'Method', 'Total Amount', 'Paid Amount', 'Balance', 'Add-on Count', 'Add-on Total', 'Add-ons', 'Status'];
     const csvRows = [
         headers.join(','),
-        ...rows.map(tx => [
-            new Date(tx.created_at).toLocaleDateString(),
-            `"${(tx.title || 'Reservation').replace(/"/g, '""')}"`,
-            `"${(tx.courts?.name || 'N/A').replace(/"/g, '""')}"`,
-            tx.payment_method || 'N/A',
-            tx.total_amount || 0,
-            tx.paid_amount || 0,
-            (tx.total_amount || 0) - (tx.paid_amount || 0),
-            tx.payment_status || 'unpaid',
-        ].join(','))
+        ...rows.map(tx => {
+            const { addonCount, addonTotal, addonNames } = getAddonSummary(tx);
+            return [
+                new Date(tx.created_at).toLocaleDateString(),
+                `"${(tx.title || 'Reservation').replace(/"/g, '""')}"`,
+                `"${(tx.courts?.name || 'N/A').replace(/"/g, '""')}"`,
+                tx.payment_method || 'N/A',
+                tx.total_amount || 0,
+                tx.paid_amount || 0,
+                (tx.total_amount || 0) - (tx.paid_amount || 0),
+                addonCount,
+                addonTotal,
+                `"${addonNames.replace(/"/g, '""')}"`,
+                tx.payment_status || 'unpaid',
+            ].join(',');
+        })
     ];
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -38,14 +57,15 @@ const TransactionsPage = () => {
     // Filter to only reservations that have payments
     const transactions = useMemo(() => {
         return reservations
-            .filter(r => (r.paid_amount > 0 || ['paid', 'partial', 'for_verification'].includes(r.payment_status)))
+            .map(normalizePaymentState)
+            .filter(r => (r.paid_amount > 0 || r.pending_payment_amount > 0 || ['paid', 'partial'].includes(r.payment_status)))
             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }, [reservations]);
 
     const stats = useMemo(() => {
         const total = transactions.reduce((sum, r) => sum + (r.paid_amount || 0), 0);
         const pending = transactions.reduce((sum, r) => sum + ((r.total_amount || 0) - (r.paid_amount || 0)), 0);
-        const reviewCount = transactions.filter(r => r.payment_status === 'for_verification').length;
+        const reviewCount = transactions.filter(r => r.payment_review_status === 'pending').length;
         return { total, pending, reviewCount };
     }, [transactions]);
 
@@ -53,16 +73,31 @@ const TransactionsPage = () => {
         setUpdatingId(reservation.id);
         try {
             if (action === 'approve') {
+                const approvedPaidAmount = (reservation.paid_amount || 0) + (reservation.pending_payment_amount || 0);
                 await updateReservation(reservation.id, {
-                    payment_status: 'paid',
-                    paid_amount: reservation.total_amount,
+                    payment_status: derivePaymentStatus(reservation.total_amount, approvedPaidAmount),
+                    payment_review_status: 'approved',
+                    payment_reviewed_at: new Date().toISOString(),
+                    paid_amount: approvedPaidAmount,
+                    payment_method: reservation.pending_payment_method || reservation.payment_method,
+                    payment_notes: reservation.pending_payment_notes || reservation.payment_notes,
+                    payment_proof_url: reservation.pending_payment_proof_url || reservation.payment_proof_url,
+                    pending_payment_amount: 0,
+                    pending_payment_method: null,
+                    pending_payment_notes: '',
+                    pending_payment_proof_url: null,
                     status: 'confirmed',
                     confirmed_at: new Date().toISOString(),
                 });
             } else if (action === 'reject') {
                 await updateReservation(reservation.id, {
-                    payment_status: 'rejected',
-                    status: 'awaiting_payment',
+                    payment_review_status: 'rejected',
+                    payment_reviewed_at: new Date().toISOString(),
+                    pending_payment_amount: 0,
+                    pending_payment_method: null,
+                    pending_payment_notes: '',
+                    pending_payment_proof_url: null,
+                    status: (reservation.paid_amount || 0) > 0 ? 'confirmed' : 'pending_verification',
                 });
             }
         } finally {
@@ -201,7 +236,16 @@ const TransactionsPage = () => {
                                         {tx.payment_method || 'N/A'}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-200">
-                                        ₱{tx.total_amount?.toLocaleString()}
+                                        <div>₱{tx.total_amount?.toLocaleString()}</div>
+                                        {(() => {
+                                            const { addonCount, addonTotal } = getAddonSummary(tx);
+                                            if (!addonCount) return null;
+                                            return (
+                                                <div className="text-[11px] text-blue-400 mt-1">
+                                                    Includes ₱{addonTotal.toLocaleString()} add-ons ({addonCount})
+                                                </div>
+                                            );
+                                        })()}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-green-400 font-medium">
                                         ₱{tx.paid_amount?.toLocaleString()}
@@ -211,19 +255,28 @@ const TransactionsPage = () => {
                                             <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${paymentBadgeStyles(tx.payment_status)}`}>
                                                 {tx.payment_status || 'unpaid'}
                                             </span>
-                                            {tx.payment_proof_url && (
+                                            <div className={`text-[10px] font-bold uppercase tracking-wider ${getPaymentReviewMeta(tx.payment_review_status).color}`}>
+                                                {getPaymentReviewMeta(tx.payment_review_status).text}
+                                            </div>
+                                            {(tx.pending_payment_proof_url || tx.payment_proof_url) && (
                                                 <div>
-                                                    <a href={tx.payment_proof_url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300">
+                                                    <a href={tx.pending_payment_proof_url || tx.payment_proof_url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300">
                                                         View proof
                                                     </a>
                                                 </div>
                                             )}
+                                            {tx.pending_payment_amount > 0 && <div className="text-[11px] text-yellow-400">Pending review: â‚±{tx.pending_payment_amount.toLocaleString()}</div>}
+                                            {(() => {
+                                                const { addonNames, addonCount } = getAddonSummary(tx);
+                                                if (!addonCount) return null;
+                                                return <div className="text-[11px] text-blue-400">Add-ons: {addonNames}</div>;
+                                            })()}
                                             {tx.customer_phone && <div className="text-[11px] text-gray-500">{tx.customer_phone}</div>}
                                             {tx.customer_email && <div className="text-[11px] text-gray-500">{tx.customer_email}</div>}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        {tx.payment_status === 'for_verification' ? (
+                                        {tx.payment_review_status === 'pending' ? (
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={() => handlePaymentReview(tx, 'approve')}
