@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Calendar, Clock, CreditCard, DollarSign, Hash, History, User, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, CreditCard, DollarSign, Hash, History, User, X } from 'lucide-react';
 import { useReservations } from '../hooks/useReservations';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -8,18 +8,25 @@ import PaymentModal from '../modals/PaymentModal';
 import ReservationDetailModal from '../modals/ReservationDetailModal';
 import { canSubmitPayment, getPaymentReviewMeta, normalizePaymentState } from '../lib/paymentUtils';
 import ModalOverlay from '../components/ui/ModalOverlay';
+import { formatBookingDate, formatCompactTimeRange } from '../lib/utils';
 const TABS = ['upcoming', 'past', 'cancelled'];
+const DESKTOP_PAGE_SIZE = 10;
+const MOBILE_BATCH_SIZE = 8;
 
 const MyBookingsPage = () => {
     const navigate = useNavigate();
     const { role } = useAuth();
-    const { reservations, loading, lastUpdatedAt, cancelReservation, updateReservation, payReservation } = useReservations();
+    const { reservations, loading, lastUpdatedAt, reservationWindow, cancelReservation, updateReservation, payReservation } = useReservations();
     const [activeTab, setActiveTab] = useState('upcoming');
+    const [desktopPage, setDesktopPage] = useState(1);
+    const [mobileVisibleCount, setMobileVisibleCount] = useState(MOBILE_BATCH_SIZE);
     const [detailId, setDetailId] = useState(null);
     const [cancelling, setCancelling] = useState(null);
     const [pendingPaymentRes, setPendingPaymentRes] = useState(null);
     const [logReservation, setLogReservation] = useState(null);
     const [isPaying, setIsPaying] = useState(false);
+    const isMobile = useIsMobile();
+    const loadMoreRef = useRef(null);
 
     const now = new Date();
 
@@ -28,6 +35,33 @@ const MyBookingsPage = () => {
         past: reservations.filter(r => r.status === 'completed' || (!['cancelled'].includes(r.status) && !isUpcoming(r, now))),
         cancelled: reservations.filter(r => r.status === 'cancelled'),
     };
+    const activeReservations = categorized[activeTab];
+    const totalPages = Math.max(1, Math.ceil(activeReservations.length / DESKTOP_PAGE_SIZE));
+    const currentDesktopPage = Math.min(desktopPage, totalPages);
+    const visibleReservations = isMobile
+        ? activeReservations.slice(0, mobileVisibleCount)
+        : activeReservations.slice((currentDesktopPage - 1) * DESKTOP_PAGE_SIZE, currentDesktopPage * DESKTOP_PAGE_SIZE);
+    const hasMoreMobileRows = isMobile && mobileVisibleCount < activeReservations.length;
+
+    useEffect(() => {
+        setDesktopPage(1);
+        setMobileVisibleCount(MOBILE_BATCH_SIZE);
+    }, [activeTab, reservations.length]);
+
+    useEffect(() => {
+        if (!isMobile || !hasMoreMobileRows || !loadMoreRef.current || typeof IntersectionObserver === 'undefined') {
+            return undefined;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0]?.isIntersecting) {
+                setMobileVisibleCount(count => Math.min(count + MOBILE_BATCH_SIZE, activeReservations.length));
+            }
+        }, { rootMargin: '160px' });
+
+        observer.observe(loadMoreRef.current);
+        return () => observer.disconnect();
+    }, [activeReservations.length, hasMoreMobileRows, isMobile]);
 
     const handleCancel = async (id) => {
         setCancelling(id);
@@ -95,7 +129,9 @@ const MyBookingsPage = () => {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-lg font-semibold text-gray-100">My Bookings</h2>
-                    <p className="text-sm text-gray-500">{reservations.length} total booking{reservations.length !== 1 ? 's' : ''}</p>
+                    <p className="text-sm text-gray-500">
+                        {reservations.length} booking{reservations.length !== 1 ? 's' : ''} from the {reservationWindow?.label || 'current window'}
+                    </p>
                     {role === 'admin' && lastUpdatedAt && (
                         <p className="text-xs text-gray-600 mt-1">Last updated {formatLastUpdated(lastUpdatedAt)}</p>
                     )}
@@ -121,15 +157,17 @@ const MyBookingsPage = () => {
 
             {/* Booking Cards */}
             <div className="space-y-3">
-                {categorized[activeTab].length === 0 ? (
+                {activeReservations.length === 0 ? (
                     <div className="text-center py-12 text-gray-500 text-sm">
                         No {activeTab} bookings.
                     </div>
                 ) : (
-                    categorized[activeTab].map(res => {
+                    visibleReservations.map(res => {
                         const court = res.courts || {};
                         const dates = res.reservation_days || [];
                         const firstDate = dates[0]?.date;
+                        const dateLabel = formatBookingDate(firstDate);
+                        const timeLabel = formatCompactTimeRange(res.start_time, res.end_time);
                         return (
                             <div
                                 key={res.id}
@@ -148,8 +186,8 @@ const MyBookingsPage = () => {
                                             <PaymentBadge status={normalizePaymentState(res).payment_status} reviewStatus={normalizePaymentState(res).payment_review_status} />
                                         </div>
                                         <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{firstDate || '—'}{dates.length > 1 && ` +${dates.length - 1} more`}</span>
-                                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{res.start_time} – {res.end_time}</span>
+                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{dateLabel || '—'}{dates.length > 1 && ` +${dates.length - 1} more`}</span>
+                                            {timeLabel && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{timeLabel}</span>}
                                         </div>
                                     </div>
                                     <div className="text-right flex-shrink-0">
@@ -194,6 +232,26 @@ const MyBookingsPage = () => {
                 )}
             </div>
 
+            {activeReservations.length > 0 && (
+                <>
+                    <DesktopPagination
+                        page={currentDesktopPage}
+                        totalPages={totalPages}
+                        totalItems={activeReservations.length}
+                        pageSize={DESKTOP_PAGE_SIZE}
+                        onPageChange={setDesktopPage}
+                    />
+
+                    <MobileLoadMore
+                        loadMoreRef={loadMoreRef}
+                        visibleCount={visibleReservations.length}
+                        totalItems={activeReservations.length}
+                        hasMore={hasMoreMobileRows}
+                        onLoadMore={() => setMobileVisibleCount(count => Math.min(count + MOBILE_BATCH_SIZE, activeReservations.length))}
+                    />
+                </>
+            )}
+
             {/* Detail Modal */}
             {detailRes && (
                 <ReservationDetailModal
@@ -232,6 +290,138 @@ const MyBookingsPage = () => {
         </div>
     );
 };
+
+function DesktopPagination({ page, totalPages, totalItems, pageSize, onPageChange }) {
+    const pages = useMemo(() => buildPageNumbers(page, totalPages), [page, totalPages]);
+    const startItem = totalItems === 0 ? 0 : ((page - 1) * pageSize) + 1;
+    const endItem = Math.min(page * pageSize, totalItems);
+
+    if (totalPages <= 1) {
+        return (
+            <div className="hidden md:flex items-center justify-between border-t border-gray-800 pt-4">
+                <p className="text-xs text-gray-500">Showing {totalItems} booking{totalItems !== 1 ? 's' : ''}</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="hidden md:flex items-center justify-between border-t border-gray-800 pt-4">
+            <p className="text-xs text-gray-500">
+                Showing {startItem}-{endItem} of {totalItems}
+            </p>
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={() => onPageChange(Math.max(1, page - 1))}
+                    disabled={page === 1}
+                    className="inline-flex h-9 items-center gap-1 rounded-md border border-gray-800 px-3 text-xs font-medium text-gray-300 transition-colors hover:border-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    <ChevronLeft className="w-4 h-4" />
+                    Prev
+                </button>
+                <div className="flex items-center gap-1">
+                    {pages.map((pageNumber, index) => (
+                        pageNumber === 'ellipsis' ? (
+                            <span key={`ellipsis-${index}`} className="px-2 text-xs text-gray-600">...</span>
+                        ) : (
+                            <button
+                                key={pageNumber}
+                                type="button"
+                                onClick={() => onPageChange(pageNumber)}
+                                className={`h-9 min-w-9 rounded-md border px-3 text-xs font-medium transition-colors ${pageNumber === page
+                                    ? 'border-blue-500/40 bg-blue-600/20 text-blue-300'
+                                    : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-white'
+                                    }`}
+                            >
+                                {pageNumber}
+                            </button>
+                        )
+                    ))}
+                </div>
+                <button
+                    type="button"
+                    onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                    disabled={page === totalPages}
+                    className="inline-flex h-9 items-center gap-1 rounded-md border border-gray-800 px-3 text-xs font-medium text-gray-300 transition-colors hover:border-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function MobileLoadMore({ loadMoreRef, visibleCount, totalItems, hasMore, onLoadMore }) {
+    return (
+        <div className="md:hidden border-t border-gray-800 pt-4 text-center">
+            <p className="text-xs text-gray-500">
+                Showing {visibleCount} of {totalItems}
+            </p>
+            {hasMore ? (
+                <div ref={loadMoreRef} className="pt-3">
+                    <button
+                        type="button"
+                        onClick={onLoadMore}
+                        className="w-full rounded-md border border-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-700 hover:text-white"
+                    >
+                        Load more
+                    </button>
+                </div>
+            ) : (
+                <p className="pt-3 text-xs text-gray-600">All bookings loaded</p>
+            )}
+        </div>
+    );
+}
+
+function buildPageNumbers(page, totalPages) {
+    if (totalPages <= 7) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages = [1];
+    const start = Math.max(2, page - 1);
+    const end = Math.min(totalPages - 1, page + 1);
+
+    if (start > 2) pages.push('ellipsis');
+
+    for (let pageNumber = start; pageNumber <= end; pageNumber += 1) {
+        pages.push(pageNumber);
+    }
+
+    if (end < totalPages - 1) pages.push('ellipsis');
+    pages.push(totalPages);
+
+    return pages;
+}
+
+function useIsMobile() {
+    const [isMobile, setIsMobile] = useState(() => (
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            ? window.matchMedia('(max-width: 767px)').matches
+            : false
+    ));
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+            return undefined;
+        }
+
+        const mediaQuery = window.matchMedia('(max-width: 767px)');
+        const handleChange = event => setIsMobile(event.matches);
+
+        if (typeof mediaQuery.addEventListener === 'function') {
+            mediaQuery.addEventListener('change', handleChange);
+            return () => mediaQuery.removeEventListener('change', handleChange);
+        }
+
+        mediaQuery.addListener(handleChange);
+        return () => mediaQuery.removeListener(handleChange);
+    }, []);
+
+    return isMobile;
+}
 
 function BookingLogsModal({ reservation, onClose }) {
     const logs = [...(reservation?.booking_logs || [])]

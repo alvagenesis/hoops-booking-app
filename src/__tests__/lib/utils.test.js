@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getDaysInMonth, getFirstDayOfMonth, formatDate, isSameDay, isDateInRange, DAYS_OF_WEEK } from '../../lib/utils';
+import { getDaysInMonth, getFirstDayOfMonth, formatDate, formatBookingDate, formatCompactTimeRange, isSameDay, isDateInRange, DAYS_OF_WEEK } from '../../lib/utils';
 
 describe('DAYS_OF_WEEK', () => {
   it('has 7 days', () => {
@@ -47,6 +47,23 @@ describe('formatDate', () => {
     expect(result).toContain('Feb');
     expect(result).toContain('15');
     expect(result).toContain('2026');
+  });
+});
+
+describe('formatBookingDate', () => {
+  it('formats booking dates with weekday, day, month, and year', () => {
+    expect(formatBookingDate('2026-04-27')).toBe('Mon. 27 Apr, 2026');
+  });
+});
+
+describe('formatCompactTimeRange', () => {
+  it('formats same-period whole-hour ranges compactly', () => {
+    expect(formatCompactTimeRange('07:00', '09:00')).toBe('7-9 AM');
+    expect(formatCompactTimeRange('17:00', '19:00')).toBe('5-7 PM');
+  });
+
+  it('keeps both periods when the range crosses noon', () => {
+    expect(formatCompactTimeRange('11:00', '13:00')).toBe('11AM-1 PM');
   });
 });
 

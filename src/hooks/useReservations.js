@@ -6,6 +6,10 @@ import { useGlobalLoading } from '../contexts/LoadingContext';
 import { normalizePaymentState } from '../lib/paymentUtils';
 
 function normalizeReservationShape(reservation) {
+  const reservationDays = Array.isArray(reservation.reservation_days)
+    ? [...reservation.reservation_days].sort((a, b) => String(a?.date || '').localeCompare(String(b?.date || '')))
+    : [];
+
   return normalizePaymentState({
     ...reservation,
     booking_source: reservation.booking_source || (reservation.user_id ? 'member' : 'guest'),
@@ -13,8 +17,39 @@ function normalizeReservationShape(reservation) {
     customer_name: reservation.customer_name || '',
     customer_phone: reservation.customer_phone || '',
     customer_email: reservation.customer_email || '',
+    reservation_days: reservationDays,
     booking_logs: Array.isArray(reservation.booking_logs) ? reservation.booking_logs : [],
   });
+}
+
+function getLocalDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getReservationWindow(role) {
+  const cutoff = new Date();
+
+  if (role === 'admin') {
+    cutoff.setMonth(cutoff.getMonth() - 3);
+    return {
+      cutoffDate: getLocalDateString(cutoff),
+      label: 'last 3 months',
+    };
+  }
+
+  cutoff.setDate(cutoff.getDate() - 30);
+  return {
+    cutoffDate: getLocalDateString(cutoff),
+    label: 'last 30 days',
+  };
+}
+
+function reservationMatchesWindow(reservation, cutoffDate) {
+  const dates = Array.isArray(reservation?.reservation_days) ? reservation.reservation_days : [];
+  return dates.some(day => day?.date >= cutoffDate);
 }
 
 function buildAddonRows(reservationId, addons = []) {
@@ -62,8 +97,12 @@ export function useReservations() {
 
     setLoading(true);
 
+    const reservationWindow = getReservationWindow(role);
+
     if (!supabase) {
-      setReservations(INITIAL_RESERVATIONS.map(normalizeReservationShape));
+      setReservations(INITIAL_RESERVATIONS
+        .map(normalizeReservationShape)
+        .filter(reservation => reservationMatchesWindow(reservation, reservationWindow.cutoffDate)));
       setLastUpdatedAt(new Date().toISOString());
       setLoading(false);
       return;
@@ -73,7 +112,8 @@ export function useReservations() {
       const isAdmin = role === 'admin';
       let query = supabase
         .from('reservations')
-        .select('*, courts(*), reservation_days(*), reservation_addons(*, amenities(name)), booking_logs(*)');
+        .select('*, courts(*), reservation_days!inner(*), reservation_addons(*, amenities(name)), booking_logs(*)')
+        .gte('reservation_days.date', reservationWindow.cutoffDate);
 
       if (!isAdmin) {
         query = query.eq('user_id', user.id);
@@ -85,7 +125,9 @@ export function useReservations() {
         setReservations(data.map(normalizeReservationShape));
         setLastUpdatedAt(new Date().toISOString());
       } else {
-        setReservations(INITIAL_RESERVATIONS.map(normalizeReservationShape));
+        setReservations(INITIAL_RESERVATIONS
+          .map(normalizeReservationShape)
+          .filter(reservation => reservationMatchesWindow(reservation, reservationWindow.cutoffDate)));
         setLastUpdatedAt(new Date().toISOString());
       }
     });
@@ -433,5 +475,15 @@ export function useReservations() {
     return data;
   }
 
-  return { reservations, loading, lastUpdatedAt, createReservation, cancelReservation, updateReservation, payReservation, refetch: fetchReservations };
+  return {
+    reservations,
+    loading,
+    lastUpdatedAt,
+    reservationWindow: getReservationWindow(role),
+    createReservation,
+    cancelReservation,
+    updateReservation,
+    payReservation,
+    refetch: fetchReservations
+  };
 }

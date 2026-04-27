@@ -4,6 +4,7 @@ import MyBookingsPage from '../../pages/MyBookingsPage';
 import { BrowserRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { useReservations } from '../../hooks/useReservations';
+import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 
 // Mock Supabase
@@ -14,6 +15,10 @@ vi.mock('../../lib/supabase', () => ({
 // Mock hooks
 vi.mock('../../hooks/useReservations', () => ({
     useReservations: vi.fn(),
+}));
+
+vi.mock('../../hooks/useAuth', () => ({
+    useAuth: vi.fn(),
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -72,10 +77,16 @@ describe('MyBookingsPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(useNavigate).mockReturnValue(mockNavigate);
+        vi.mocked(useAuth).mockReturnValue({
+            role: 'user',
+        });
         vi.mocked(useReservations).mockReturnValue({
             reservations: mockReservations,
             loading: false,
+            reservationWindow: { label: 'last 30 days', cutoffDate: '2026-03-28' },
             cancelReservation: mockCancelReservation,
+            updateReservation: vi.fn(),
+            payReservation: vi.fn(),
         });
     });
 
@@ -105,7 +116,10 @@ describe('MyBookingsPage', () => {
         vi.mocked(useReservations).mockReturnValue({
             reservations: [],
             loading: false,
+            reservationWindow: { label: 'last 30 days', cutoffDate: '2026-03-28' },
             cancelReservation: vi.fn(),
+            updateReservation: vi.fn(),
+            payReservation: vi.fn(),
         });
         renderMyBookingsPage();
         expect(screen.getByText(/No upcoming bookings/i)).toBeInTheDocument();
@@ -116,7 +130,7 @@ describe('MyBookingsPage', () => {
         renderMyBookingsPage();
 
         await user.click(screen.getByText('Upcoming Game'));
-        expect(screen.getByText('Booking Details')).toBeInTheDocument();
+        expect(screen.getByText('Reservation Details')).toBeInTheDocument();
         expect(screen.getAllByText('Main Court').length).toBeGreaterThanOrEqual(1);
     });
 

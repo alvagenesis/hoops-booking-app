@@ -4,12 +4,12 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import PaymentModal from '../modals/PaymentModal';
 import ReservationDetailModal from '../modals/ReservationDetailModal';
-import { getDaysInMonth, getFirstDayOfMonth, isSameDay, isDateInRange, DAYS_OF_WEEK } from '../lib/utils';
+import { getDaysInMonth, getFirstDayOfMonth, isSameDay, isDateInRange, DAYS_OF_WEEK, formatCompactTimeRange } from '../lib/utils';
 import { useReservations } from '../hooks/useReservations';
 import { useAuth } from '../hooks/useAuth';
 
 const SHORT_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-const MAX_VISIBLE = 3;
+const MAX_VISIBLE_BOOKINGS = 3;
 
 function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose, onSelect }) {
   const dayName = SHORT_DAYS[new Date(year, month, day).getDay()];
@@ -53,12 +53,12 @@ function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose,
         {/* Booking rows */}
         <div className="px-2 pb-2 space-y-[2px] max-h-64 overflow-y-auto">
           {reservations.map((res, i) => {
-            const timeLabel = res.start_time && res.end_time ? `${res.start_time}–${res.end_time}` : '';
+            const timeLabel = formatCompactTimeRange(res.start_time, res.end_time);
             const isConfirmed = res.status === 'confirmed';
             return (
               <button
                 key={i}
-                className={`w-full text-left px-2 h-[22px] flex items-center rounded text-[12px] leading-none truncate border transition-colors ${
+                className={`w-full text-left px-1.5 py-[1px] min-h-4 flex items-center rounded text-[11px] leading-4 truncate border transition-colors ${
                   isConfirmed
                     ? 'bg-blue-500/10 text-blue-300 border-blue-500/20 hover:bg-blue-500/20'
                     : 'bg-orange-500/10 text-orange-300 border-orange-500/20 hover:bg-orange-500/20'
@@ -66,7 +66,7 @@ function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose,
                 onClick={() => onSelect(res)}
               >
                 <span className="font-medium truncate shrink min-w-0">{res.title || 'Booking'}</span>
-                {timeLabel && <span className="opacity-70 ml-1.5 shrink-0 text-[11px]">{timeLabel}</span>}
+                {timeLabel && <span className="opacity-70 ml-1.5 shrink-0">{timeLabel}</span>}
               </button>
             );
           })}
@@ -75,6 +75,25 @@ function DayOverflowPopup({ day, year, month, reservations, anchorRect, onClose,
     </>,
     document.body
   );
+}
+
+function sortReservationsByTime(a, b) {
+  const startDiff = toMinutes(a?.start_time) - toMinutes(b?.start_time);
+  if (startDiff !== 0) return startDiff;
+
+  return toMinutes(a?.end_time) - toMinutes(b?.end_time);
+}
+
+function toMinutes(time) {
+  if (!time) return Number.MAX_SAFE_INTEGER;
+
+  const [hour, minute = 0] = String(time).split(':').map(Number);
+
+  if (Number.isNaN(hour) || Number.isNaN(minute)) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return hour * 60 + minute;
 }
 
 const CalendarPage = () => {
@@ -148,7 +167,7 @@ const CalendarPage = () => {
       const end = new Date(endRaw);
       if (isNaN(start) || isNaN(end)) return false;
       return isDateInRange(date, start, end);
-    });
+    }).sort(sortReservationsByTime);
   };
 
   return (
@@ -214,8 +233,8 @@ const CalendarPage = () => {
               {calendarDays.map((day, idx) => {
                 const dayReservations = getReservationsForDay(day);
                 const isToday = day && isSameDay(new Date(year, month, day), new Date());
-                const hasOverflow = dayReservations.length > MAX_VISIBLE;
-                const visibleCount = hasOverflow ? MAX_VISIBLE - 1 : dayReservations.length;
+                const hasOverflow = dayReservations.length > MAX_VISIBLE_BOOKINGS;
+                const visibleCount = hasOverflow ? MAX_VISIBLE_BOOKINGS : dayReservations.length;
 
                 const cellClass = `p-1 sm:p-2 flex flex-col border-b border-r border-gray-800/50 last:border-r-0 ${
                   !day ? 'bg-[#0d0d10]' : 'bg-[#111116]'
@@ -250,7 +269,7 @@ const CalendarPage = () => {
                             return (
                               <div
                                 key={rIdx}
-                                className={`px-2 py-0.5 text-xs rounded truncate cursor-pointer transition-colors ${res.status === 'confirmed'
+                                className={`px-1.5 py-[1px] text-[11px] leading-4 rounded truncate cursor-pointer transition-colors ${res.status === 'confirmed'
                                   ? 'bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20'
                                   : 'bg-orange-500/10 text-orange-300 border border-orange-500/20 hover:bg-orange-500/20'
                                   } ${isMultiDay && !isStart ? 'opacity-70 ml-2' : ''}`}
