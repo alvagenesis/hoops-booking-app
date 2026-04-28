@@ -41,6 +41,10 @@ const DashboardPage = () => {
   const pendingBookings = reservations.filter(r => ['pending_verification', 'pending', 'awaiting_payment'].includes(r.status)).length;
   const pendingPayments = reservations.filter(r => ['unpaid', 'partial'].includes(r.payment_status) || r.payment_review_status === 'pending').length;
   const userPaidTotal = displayBookings.reduce((sum, r) => sum + (r.paid_amount || 0), 0);
+  const paymentReviews = reservations.filter(r => r.payment_review_status === 'pending').length;
+  const rejectedBookings = reservations.filter(r => r.payment_review_status === 'rejected').length;
+  const todayBookings = reservations.filter(r => isReservationToday(r, now)).length;
+  const activeCourts = courts.filter(court => court.is_active !== false).length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -111,16 +115,40 @@ const DashboardPage = () => {
 
         <div className="space-y-6">
           <div className="bg-[#111116] border border-gray-800 rounded-xl p-6 h-full min-h-[300px] flex flex-col">
-            <h3 className="text-lg font-medium text-gray-100 mb-4 border-b border-gray-800 pb-2">System Status</h3>
-            <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="w-12 h-12 bg-[#1a1a24] rounded-full flex items-center justify-center border border-gray-800 mb-2 relative">
-                <CheckCircle2 className="w-6 h-6 text-green-500" />
-                <span className="absolute top-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#111116] rounded-full animate-pulse"></span>
+            <h3 className="text-lg font-medium text-gray-100 mb-4 border-b border-gray-800 pb-2">{isAdmin ? 'Action Center' : 'Booking Snapshot'}</h3>
+            <div className="flex-1 space-y-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-[#1a1a24] rounded-full flex items-center justify-center border border-gray-800 relative shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-green-500" />
+                  <span className="absolute top-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#111116] rounded-full animate-pulse"></span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-200">{isAdmin ? 'Operations Healthy' : 'Booking Tools Ready'}</p>
+                  <p className="text-xs text-gray-500 mt-1">{isAdmin ? 'Live booking data is syncing.' : 'Your booking workspace is ready.'}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-300">All Systems Operational</p>
-                <p className="text-xs text-gray-500 mt-1">Booking engine is running smoothly.</p>
-              </div>
+
+              {isAdmin ? (
+                <>
+                  <div className="space-y-2">
+                    <ActionMetric label="Payment reviews" value={paymentReviews} tone={paymentReviews > 0 ? 'yellow' : 'green'} onClick={() => navigate('/my-bookings?filter=payment_reviews')} />
+                    <ActionMetric label="Rejected bookings" value={rejectedBookings} tone={rejectedBookings > 0 ? 'red' : 'green'} onClick={() => navigate('/my-bookings?filter=rejected_bookings')} />
+                    <ActionMetric label="Bookings today" value={todayBookings} tone="blue" />
+                    <ActionMetric label="Courts active" value={`${activeCourts}/${courts.length}`} tone={activeCourts === courts.length ? 'green' : 'yellow'} />
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 pt-1">
+                    <Button variant="primary" onClick={() => navigate('/transactions')}>Review Payments</Button>
+                    <Button variant="secondary" onClick={() => navigate('/calendar')}>View Schedule</Button>
+                    <Button variant="secondary" onClick={() => navigate('/courts')}>Manage Courts</Button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <ActionMetric label="Recent bookings" value={displayBookings.length} tone="blue" />
+                  <ActionMetric label="Open payments" value={displayBookings.filter(r => ['unpaid', 'partial'].includes(r.payment_status) || r.payment_review_status === 'pending').length} tone="yellow" />
+                  <Button variant="primary" className="w-full mt-3" onClick={() => navigate('/my-bookings')}>View My Bookings</Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -128,6 +156,44 @@ const DashboardPage = () => {
     </div>
   );
 };
+
+function ActionMetric({ label, value, tone, onClick }) {
+  const toneStyles = {
+    green: 'text-green-400 bg-green-500/10',
+    yellow: 'text-yellow-400 bg-yellow-500/10',
+    red: 'text-red-400 bg-red-500/10',
+    blue: 'text-blue-400 bg-blue-500/10',
+  };
+  const Component = onClick ? 'button' : 'div';
+
+  return (
+    <Component
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`flex w-full items-center justify-between rounded-lg border border-gray-800 bg-[#16161c] px-3 py-2 text-left transition-colors ${onClick ? 'hover:border-gray-700 hover:bg-[#1d1d27]' : ''}`}
+    >
+      <span className="text-xs text-gray-400">{label}</span>
+      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${toneStyles[tone] || toneStyles.blue}`}>
+        {value}
+      </span>
+    </Component>
+  );
+}
+
+function isReservationToday(reservation, today) {
+  const { start, end } = getReservationDateRange(reservation);
+
+  if (!start) {
+    return false;
+  }
+
+  const compareEnd = end || start;
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startTime = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const endTime = new Date(compareEnd.getFullYear(), compareEnd.getMonth(), compareEnd.getDate()).getTime();
+
+  return todayStart >= startTime && todayStart <= endTime;
+}
 
 function getSortTimestamp(reservation) {
   const { end, start } = getReservationDateRange(reservation);

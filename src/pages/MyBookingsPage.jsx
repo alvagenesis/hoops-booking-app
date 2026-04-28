@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Clock, CreditCard, DollarSign, Hash, History, User, X } from 'lucide-react';
 import { useReservations } from '../hooks/useReservations';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import Button from '../components/ui/Button';
 import PaymentModal from '../modals/PaymentModal';
@@ -12,9 +12,17 @@ import { formatBookingDate, formatCompactTimeRange } from '../lib/utils';
 const TABS = ['upcoming', 'past', 'cancelled'];
 const DESKTOP_PAGE_SIZE = 10;
 const MOBILE_BATCH_SIZE = 8;
+const ADMIN_FILTERS = [
+    { id: 'all', label: 'All bookings' },
+    { id: 'needs_admin_action', label: 'Needs admin action' },
+    { id: 'payment_reviews', label: 'Payment reviews' },
+    { id: 'rejected_bookings', label: 'Rejected bookings' },
+];
+const PENDING_BOOKING_STATUSES = ['pending_verification', 'pending', 'awaiting_payment'];
 
 const MyBookingsPage = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { role } = useAuth();
     const { reservations, loading, lastUpdatedAt, reservationWindow, cancelReservation, updateReservation, payReservation } = useReservations();
     const [activeTab, setActiveTab] = useState('upcoming');
@@ -27,13 +35,20 @@ const MyBookingsPage = () => {
     const [isPaying, setIsPaying] = useState(false);
     const isMobile = useIsMobile();
     const loadMoreRef = useRef(null);
+    const isAdmin = role === 'admin';
+    const requestedAdminFilter = searchParams.get('filter') || 'all';
+    const adminFilter = isAdmin && ADMIN_FILTERS.some(filter => filter.id === requestedAdminFilter)
+        ? requestedAdminFilter
+        : 'all';
 
     const now = new Date();
 
+    const filteredReservations = reservations.filter(reservation => matchesAdminFilter(reservation, adminFilter));
+
     const categorized = {
-        upcoming: reservations.filter(r => r.status !== 'cancelled' && r.status !== 'completed' && isUpcoming(r, now)),
-        past: reservations.filter(r => r.status === 'completed' || (!['cancelled'].includes(r.status) && !isUpcoming(r, now))),
-        cancelled: reservations.filter(r => r.status === 'cancelled'),
+        upcoming: filteredReservations.filter(r => r.status !== 'cancelled' && r.status !== 'completed' && isUpcoming(r, now)),
+        past: filteredReservations.filter(r => r.status === 'completed' || (!['cancelled'].includes(r.status) && !isUpcoming(r, now))),
+        cancelled: filteredReservations.filter(r => r.status === 'cancelled'),
     };
     const activeReservations = categorized[activeTab];
     const totalPages = Math.max(1, Math.ceil(activeReservations.length / DESKTOP_PAGE_SIZE));
@@ -46,7 +61,7 @@ const MyBookingsPage = () => {
     useEffect(() => {
         setDesktopPage(1);
         setMobileVisibleCount(MOBILE_BATCH_SIZE);
-    }, [activeTab, reservations.length]);
+    }, [activeTab, reservations.length, adminFilter]);
 
     useEffect(() => {
         if (!isMobile || !hasMoreMobileRows || !loadMoreRef.current || typeof IntersectionObserver === 'undefined') {
@@ -83,6 +98,18 @@ const MyBookingsPage = () => {
         } finally {
             setIsPaying(false);
         }
+    };
+
+    const handleAdminFilterChange = (filterId) => {
+        const nextParams = new URLSearchParams(searchParams);
+
+        if (filterId === 'all') {
+            nextParams.delete('filter');
+        } else {
+            nextParams.set('filter', filterId);
+        }
+
+        setSearchParams(nextParams, { replace: true });
     };
 
     const detailRes = detailId ? reservations.find(r => r.id === detailId) : null;
@@ -130,7 +157,7 @@ const MyBookingsPage = () => {
                 <div>
                     <h2 className="text-lg font-semibold text-gray-100">My Bookings</h2>
                     <p className="text-sm text-gray-500">
-                        {reservations.length} booking{reservations.length !== 1 ? 's' : ''} from the {reservationWindow?.label || 'current window'}
+                        {filteredReservations.length} of {reservations.length} booking{reservations.length !== 1 ? 's' : ''} from the {reservationWindow?.label || 'current window'}
                     </p>
                     {role === 'admin' && lastUpdatedAt && (
                         <p className="text-xs text-gray-600 mt-1">Last updated {formatLastUpdated(lastUpdatedAt)}</p>
@@ -140,6 +167,27 @@ const MyBookingsPage = () => {
                     <Calendar className="w-4 h-4" /> New Booking
                 </Button>
             </div>
+
+            {isAdmin && (
+                <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Admin filter</p>
+                    <div className="flex flex-wrap gap-2">
+                        {ADMIN_FILTERS.map(filter => (
+                            <button
+                                key={filter.id}
+                                type="button"
+                                onClick={() => handleAdminFilterChange(filter.id)}
+                                className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${adminFilter === filter.id
+                                    ? 'border-blue-500/40 bg-blue-600/20 text-blue-300'
+                                    : 'border-gray-800 bg-[#111116] text-gray-400 hover:border-gray-700 hover:text-white'
+                                    }`}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Tabs */}
             <div className="flex gap-1 bg-[#111116] border border-gray-800 rounded-lg p-1">
@@ -423,6 +471,19 @@ function useIsMobile() {
     return isMobile;
 }
 
+function matchesAdminFilter(reservation, filter) {
+    switch (filter) {
+        case 'needs_admin_action':
+            return reservation.payment_review_status === 'pending' || PENDING_BOOKING_STATUSES.includes(reservation.status);
+        case 'payment_reviews':
+            return reservation.payment_review_status === 'pending';
+        case 'rejected_bookings':
+            return reservation.payment_review_status === 'rejected';
+        default:
+            return true;
+    }
+}
+
 function BookingLogsModal({ reservation, onClose }) {
     const logs = [...(reservation?.booking_logs || [])]
         .filter(Boolean)
@@ -588,10 +649,15 @@ function PaymentBadge({ status, reviewStatus }) {
         unpaid: 'bg-red-500/10 text-red-400 border-red-500/20',
         partial: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
         paid: 'bg-green-500/10 text-green-400 border-green-500/20',
+        rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
     };
     const reviewMeta = getPaymentReviewMeta(reviewStatus);
+    const isRejected = reviewStatus === 'rejected';
+    if (isRejected) {
+        status = reviewMeta.text;
+    }
     return (
-        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight border ${styles[status] || styles.unpaid}`}>
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight border ${isRejected ? styles.rejected : (styles[status] || styles.unpaid)}`}>
             <DollarSign className="w-2.5 h-2.5" /> {status} {reviewStatus === 'pending' ? `· ${reviewMeta.text}` : ''}
         </span>
     );

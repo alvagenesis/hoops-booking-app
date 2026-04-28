@@ -76,6 +76,7 @@ describe('MyBookingsPage', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        window.history.pushState({}, '', '/my-bookings');
         vi.mocked(useNavigate).mockReturnValue(mockNavigate);
         vi.mocked(useAuth).mockReturnValue({
             role: 'user',
@@ -148,5 +149,93 @@ describe('MyBookingsPage', () => {
 
         await user.click(screen.getByText(/New Booking/i));
         expect(mockNavigate).toHaveBeenCalledWith('/book');
+    });
+
+    it('shows rejected payment review instead of paid payment status', () => {
+        vi.mocked(useReservations).mockReturnValue({
+            reservations: [
+                { ...mockReservations[0], payment_status: 'paid', payment_review_status: 'rejected' },
+            ],
+            loading: false,
+            reservationWindow: { label: 'last 30 days', cutoffDate: '2026-03-28' },
+            cancelReservation: mockCancelReservation,
+            updateReservation: vi.fn(),
+            payReservation: vi.fn(),
+        });
+
+        renderMyBookingsPage();
+
+        expect(screen.getByText('Rejected')).toBeInTheDocument();
+        expect(screen.queryByText('paid')).not.toBeInTheDocument();
+    });
+
+    it('applies admin payment review filter from the URL', () => {
+        window.history.pushState({}, '', '/my-bookings?filter=payment_reviews');
+        vi.mocked(useAuth).mockReturnValue({
+            role: 'admin',
+        });
+        vi.mocked(useReservations).mockReturnValue({
+            reservations: [
+                { ...mockReservations[0], payment_review_status: 'pending' },
+                { ...mockReservations[1], payment_review_status: 'approved' },
+            ],
+            loading: false,
+            reservationWindow: { label: 'last 3 months', cutoffDate: '2026-01-28' },
+            cancelReservation: mockCancelReservation,
+            updateReservation: vi.fn(),
+            payReservation: vi.fn(),
+        });
+
+        renderMyBookingsPage();
+        expect(screen.getByText('Payment reviews')).toBeInTheDocument();
+        expect(screen.getByText('Upcoming Game')).toBeInTheDocument();
+        expect(screen.queryByText('Past Game')).not.toBeInTheDocument();
+    });
+
+    it('lets admins switch to needs admin action filter directly on the page', async () => {
+        const user = userEvent.setup();
+        vi.mocked(useAuth).mockReturnValue({
+            role: 'admin',
+        });
+        vi.mocked(useReservations).mockReturnValue({
+            reservations: [
+                { ...mockReservations[0], status: 'pending_verification', payment_review_status: 'not_submitted' },
+                { ...mockReservations[1], status: 'completed', payment_review_status: 'approved' },
+            ],
+            loading: false,
+            reservationWindow: { label: 'last 3 months', cutoffDate: '2026-01-28' },
+            cancelReservation: mockCancelReservation,
+            updateReservation: vi.fn(),
+            payReservation: vi.fn(),
+        });
+
+        renderMyBookingsPage();
+        await user.click(screen.getByRole('button', { name: 'Needs admin action' }));
+
+        expect(screen.getByText('Upcoming Game')).toBeInTheDocument();
+        expect(screen.queryByText('Past Game')).not.toBeInTheDocument();
+    });
+
+    it('applies admin rejected bookings filter from the URL', () => {
+        window.history.pushState({}, '', '/my-bookings?filter=rejected_bookings');
+        vi.mocked(useAuth).mockReturnValue({
+            role: 'admin',
+        });
+        vi.mocked(useReservations).mockReturnValue({
+            reservations: [
+                { ...mockReservations[0], payment_review_status: 'rejected' },
+                { ...mockReservations[1], payment_review_status: 'approved' },
+            ],
+            loading: false,
+            reservationWindow: { label: 'last 3 months', cutoffDate: '2026-01-28' },
+            cancelReservation: mockCancelReservation,
+            updateReservation: vi.fn(),
+            payReservation: vi.fn(),
+        });
+
+        renderMyBookingsPage();
+        expect(screen.getByText('Rejected bookings')).toBeInTheDocument();
+        expect(screen.getByText('Upcoming Game')).toBeInTheDocument();
+        expect(screen.queryByText('Past Game')).not.toBeInTheDocument();
     });
 });
