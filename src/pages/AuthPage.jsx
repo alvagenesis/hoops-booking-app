@@ -108,8 +108,7 @@ const AuthPage = () => {
 
         {/* Desktop Branding Content */}
         <div className="hidden lg:flex absolute inset-0 flex-col justify-end p-12 lg:p-16 xl:p-24 z-10">
-          <div className="relative mb-6 self-start p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          <div className="relative mb-6 self-start">
             <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="relative z-10 h-16 w-auto animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-5xl xl:text-6xl font-black text-white mb-4 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">

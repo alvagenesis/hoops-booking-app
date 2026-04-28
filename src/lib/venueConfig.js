@@ -3,7 +3,7 @@
 
 export const venueConfig = {
     name: 'YMCA Manila',
-    logoPath: '/ymca-logo.png',
+    logoPath: '/ymca-logo3.png',
     contactPhone: '09XX-XXX-XXXX',
 
     // Payment account details shown to customers in the payment modal.
