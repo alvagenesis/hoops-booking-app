@@ -3,6 +3,16 @@ import { supabase } from '../lib/supabase';
 
 export const AuthContext = createContext(null);
 
+function getProfileNamesFromMetadata(meta = {}) {
+  const fullName = meta.full_name || meta.name || '';
+  const [firstNameFromFullName, ...lastNameParts] = fullName.trim().split(/\s+/).filter(Boolean);
+
+  return {
+    firstName: meta.first_name || meta.given_name || firstNameFromFullName || '',
+    lastName: meta.last_name || meta.family_name || lastNameParts.join(' ') || '',
+  };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -14,22 +24,35 @@ export function AuthProvider({ children }) {
       .select('*')
       .eq('id', userId)
       .maybeSingle();
+    const meta = (await supabase.auth.getUser())?.data?.user?.user_metadata || {};
+    const { firstName, lastName } = getProfileNamesFromMetadata(meta);
 
     // Auto-create profile if it doesn't exist (user created before trigger was set up)
     if (!data) {
-      const meta = (await supabase.auth.getUser())?.data?.user?.user_metadata || {};
       const { data: newProfile } = await supabase
         .from('profiles')
         .upsert({
           id: userId,
-          first_name: meta.first_name || '',
-          last_name: meta.last_name || '',
+          first_name: firstName,
+          last_name: lastName,
           phone: meta.phone || '',
           address: meta.address || '',
         })
         .select()
         .maybeSingle();
       data = newProfile;
+    } else if ((!data.first_name && firstName) || (!data.last_name && lastName)) {
+      const updates = {
+        first_name: data.first_name || firstName,
+        last_name: data.last_name || lastName,
+      };
+      const { data: updatedProfile } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+      data = updatedProfile || { ...data, ...updates };
     }
     setProfile(data);
   }
@@ -109,7 +132,10 @@ export function AuthProvider({ children }) {
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/dashboard' }
+      options: {
+        redirectTo: window.location.origin + '/dashboard',
+        scopes: 'email profile',
+      }
     });
     if (error) throw error;
     return data;
@@ -197,4 +223,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-

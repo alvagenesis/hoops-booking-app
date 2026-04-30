@@ -56,12 +56,36 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER
 AS $$
+DECLARE
+  full_name text := COALESCE(
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'name',
+    ''
+  );
+  resolved_first_name text := COALESCE(
+    NEW.raw_user_meta_data->>'first_name',
+    NEW.raw_user_meta_data->>'given_name',
+    ''
+  );
+  resolved_last_name text := COALESCE(
+    NEW.raw_user_meta_data->>'last_name',
+    NEW.raw_user_meta_data->>'family_name',
+    ''
+  );
 BEGIN
+  IF resolved_first_name = '' AND full_name <> '' THEN
+    resolved_first_name := split_part(full_name, ' ', 1);
+  END IF;
+
+  IF resolved_last_name = '' AND full_name <> '' AND position(' ' IN full_name) > 0 THEN
+    resolved_last_name := substring(full_name from position(' ' IN full_name) + 1);
+  END IF;
+
   INSERT INTO public.profiles (id, first_name, last_name, phone, address)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+    resolved_first_name,
+    resolved_last_name,
     COALESCE(NEW.raw_user_meta_data->>'phone', ''),
     COALESCE(NEW.raw_user_meta_data->>'address', '')
   );
