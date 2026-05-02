@@ -12,6 +12,7 @@ import { useTimeSlots } from '../hooks/useTimeSlots';
 import { useReservations } from '../hooks/useReservations';
 import { useAuth } from '../hooks/useAuth';
 import { getSlotTimingState } from '../lib/timeSlotRules';
+import { BOOKING_INPUT_LIMITS, limitBookingInput } from '../lib/bookingInputLimits';
 
 const STEPS = ['Court', 'Date', 'Time', 'Review'];
 
@@ -110,7 +111,7 @@ const BookingPage = () => {
 
         const baseReservation = {
             court_id: selectedCourt.id,
-            title: title || 'Court Booking',
+            title: limitBookingInput(title?.trim(), BOOKING_INPUT_LIMITS.title) || 'Court Booking',
             notes: notes || '',
             start_time: selectedSlots[0].start,
             end_time: selectedSlots[selectedSlots.length - 1].end,
@@ -122,9 +123,9 @@ const BookingPage = () => {
             payment_review_status: 'pending',
             payment_method: null,
             pending_payment_method: paymentMethod,
-            customer_name: customerName?.trim() || '',
+            customer_name: limitBookingInput(customerName?.trim(), BOOKING_INPUT_LIMITS.customerName),
             customer_phone: customerPhone?.trim() || '',
-            customer_email: customerEmail?.trim() || '',
+            customer_email: limitBookingInput(customerEmail?.trim(), BOOKING_INPUT_LIMITS.customerEmail),
             payment_notes: '',
             pending_payment_notes: paymentNotes || '',
         };

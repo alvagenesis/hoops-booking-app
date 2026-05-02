@@ -6,6 +6,7 @@ import PaymentModal from '../../modals/PaymentModal';
 import AddonsSelection from './AddonsSelection';
 import { useAmenities } from '../../hooks/useAmenities';
 import { useAuth } from '../../hooks/useAuth';
+import { BOOKING_INPUT_LIMITS, limitBookingInput } from '../../lib/bookingInputLimits';
 
 const BookingReview = ({ court, dates, timeSlots, onConfirm, loading, isGuest }) => {
     const { amenities } = useAmenities();
@@ -42,13 +43,13 @@ const BookingReview = ({ court, dates, timeSlots, onConfirm, loading, isGuest })
 
     const handlePaymentConfirm = (paymentInfo) => {
         onConfirm({
-            title,
+            title: limitBookingInput(title.trim(), BOOKING_INPUT_LIMITS.title),
             notes,
             totalAmount,
             dates: dateList,
-            customerName: customerName.trim(),
+            customerName: limitBookingInput(customerName.trim(), BOOKING_INPUT_LIMITS.customerName),
             customerPhone: normalizedPhone,
-            customerEmail: customerEmail.trim(),
+            customerEmail: limitBookingInput(customerEmail.trim(), BOOKING_INPUT_LIMITS.customerEmail),
             addons: selectedAddons.map(a => ({ amenity_id: a.id, price_at_booking: a.price })),
             ...paymentInfo
         });
@@ -138,7 +139,8 @@ const BookingReview = ({ court, dates, timeSlots, onConfirm, loading, isGuest })
                     </label>
                     <input
                         value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
+                        onChange={(e) => setCustomerName(limitBookingInput(e.target.value, BOOKING_INPUT_LIMITS.customerName))}
+                        maxLength={BOOKING_INPUT_LIMITS.customerName}
                         placeholder="Full name"
                         className={`w-full bg-[#111116] border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors ${touched && isGuest && !customerName.trim() ? 'border-red-500/50' : 'border-gray-800'}`}
                     />
@@ -171,8 +173,10 @@ const BookingReview = ({ court, dates, timeSlots, onConfirm, loading, isGuest })
                             Email Address
                         </label>
                         <input
+                            type="email"
                             value={customerEmail}
-                            onChange={(e) => setCustomerEmail(e.target.value)}
+                            onChange={(e) => setCustomerEmail(limitBookingInput(e.target.value, BOOKING_INPUT_LIMITS.customerEmail))}
+                            maxLength={BOOKING_INPUT_LIMITS.customerEmail}
                             placeholder="name@example.com"
                             className={`w-full bg-[#111116] border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors ${customerEmailLooksValid ? 'border-gray-800' : 'border-red-500/50'}`}
                         />
@@ -192,7 +196,8 @@ const BookingReview = ({ court, dates, timeSlots, onConfirm, loading, isGuest })
                     </label>
                     <input
                         value={title}
-                        onChange={(e) => setTitle(e.target.value)}
+                        onChange={(e) => setTitle(limitBookingInput(e.target.value, BOOKING_INPUT_LIMITS.title))}
+                        maxLength={BOOKING_INPUT_LIMITS.title}
                         placeholder="e.g. Team Practice, Pickup Game..."
                         className="w-full bg-[#111116] border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                     />

@@ -51,7 +51,7 @@ export const INITIAL_RESERVATIONS = [
     id: 'r1', court_id: 'c1', user_id: 'demo', title: 'Weekend Tournament',
     notes: 'Bring jerseys', start_time: '09:00', end_time: '11:00',
     status: 'confirmed', total_amount: 1000, paid_amount: 1000, payment_status: 'paid', payment_review_status: 'approved', pending_payment_amount: 0, payment_method: 'cash',
-    customer_name: 'John Doe', customer_phone: '09171234567', customer_email: 'john@example.com',
+    customer_name: 'Juan Dela Cruz', customer_phone: '09171234567', customer_email: 'juan.delacruz@example.com',
     booking_source: 'member', is_guest_booking: false,
     created_at: new Date().toISOString(),
     reservation_days: [
@@ -70,7 +70,7 @@ export const INITIAL_RESERVATIONS = [
     id: 'r2', court_id: 'c2', user_id: null, title: 'Evening Pickup Game',
     notes: '', start_time: '17:00', end_time: '18:00',
     status: 'confirmed', total_amount: 300, paid_amount: 150, payment_status: 'partial', payment_review_status: 'approved', pending_payment_amount: 0, payment_method: 'gcash',
-    customer_name: 'Walk-in Player', customer_phone: '09981234567', customer_email: 'walkin@example.com',
+    customer_name: 'Maria Santos', customer_phone: '09981234567', customer_email: 'maria.santos@example.com',
     booking_source: 'guest', is_guest_booking: true,
     created_at: new Date().toISOString(),
     reservation_days: [

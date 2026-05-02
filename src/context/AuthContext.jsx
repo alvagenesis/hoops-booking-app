@@ -113,7 +113,7 @@ export function AuthProvider({ children }) {
       // Demo mode fallback
       const demoUser = { id: 'demo', email };
       setUser(demoUser);
-      setProfile({ id: 'demo', first_name: 'John', last_name: 'Doe', role: 'admin' });
+      setProfile({ id: 'demo', first_name: 'Juan', last_name: 'Dela Cruz', role: 'admin' });
       return;
     }
 
@@ -126,7 +126,7 @@ export function AuthProvider({ children }) {
     if (!supabase) {
       const demoUser = { id: 'demo', email: 'demo@hoopshq.com' };
       setUser(demoUser);
-      setProfile({ id: 'demo', first_name: 'John', last_name: 'Doe', role: 'admin' });
+      setProfile({ id: 'demo', first_name: 'Juan', last_name: 'Dela Cruz', role: 'admin' });
       return;
     }
 
@@ -145,7 +145,7 @@ export function AuthProvider({ children }) {
     if (!supabase) {
       const demoUser = { id: 'demo', email: 'demo@hoopshq.com' };
       setUser(demoUser);
-      setProfile({ id: 'demo', first_name: 'John', last_name: 'Doe', role: 'admin' });
+      setProfile({ id: 'demo', first_name: 'Juan', last_name: 'Dela Cruz', role: 'admin' });
       return;
     }
 

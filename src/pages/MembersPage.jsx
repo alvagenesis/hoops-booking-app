@@ -3,9 +3,9 @@ import { Users, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const MOCK_MEMBERS = [
-  { id: '1', first_name: 'John', last_name: 'Doe', role: 'admin', created_at: '2026-01-15T00:00:00Z' },
-  { id: '2', first_name: 'Jane', last_name: 'Smith', role: 'member', created_at: '2026-02-01T00:00:00Z' },
-  { id: '3', first_name: 'Mike', last_name: 'Santos', role: 'member', created_at: '2026-02-10T00:00:00Z' },
+  { id: '1', first_name: 'Juan', last_name: 'Dela Cruz', role: 'admin', created_at: '2026-01-15T00:00:00Z' },
+  { id: '2', first_name: 'Maria', last_name: 'Santos', role: 'member', created_at: '2026-02-01T00:00:00Z' },
+  { id: '3', first_name: 'Andres', last_name: 'Reyes', role: 'member', created_at: '2026-02-10T00:00:00Z' },
 ];
 
 const MembersPage = () => {

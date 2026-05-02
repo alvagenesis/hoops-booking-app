@@ -54,7 +54,7 @@ describe('App routing', () => {
     mockUseAuth.mockReturnValue({
       user: { id: 'u1' },
       loading: false,
-      displayName: 'John Doe',
+      displayName: 'Juan Dela Cruz',
       role: 'admin',
       signOut: vi.fn(),
     });
@@ -66,7 +66,7 @@ describe('App routing', () => {
     mockUseAuth.mockReturnValue({
       user: { id: 'u1' },
       loading: false,
-      displayName: 'John Doe',
+      displayName: 'Juan Dela Cruz',
       role: 'admin',
       signOut: vi.fn(),
     });
@@ -78,7 +78,7 @@ describe('App routing', () => {
     mockUseAuth.mockReturnValue({
       user: { id: 'u1' },
       loading: false,
-      displayName: 'John Doe',
+      displayName: 'Juan Dela Cruz',
       role: 'admin',
       signOut: vi.fn(),
     });
@@ -90,12 +90,12 @@ describe('App routing', () => {
     mockUseAuth.mockReturnValue({
       user: { id: 'u1' },
       loading: false,
-      displayName: 'John Doe',
+      displayName: 'Juan Dela Cruz',
       role: 'admin',
       signOut: vi.fn(),
     });
     renderApp('/dashboard');
-    expect(screen.getByAltText('YMCA Logo')).toBeInTheDocument();
+    expect(screen.getByAltText('YMCA Manila Logo')).toBeInTheDocument();
     // Use getAllByText since "Dashboard" appears in both nav and page title
     expect(screen.getAllByText('Dashboard').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Calendar')).toBeInTheDocument();
@@ -106,12 +106,12 @@ describe('App routing', () => {
     mockUseAuth.mockReturnValue({
       user: { id: 'u1' },
       loading: false,
-      displayName: 'John Doe',
+      displayName: 'Juan Dela Cruz',
       role: 'admin',
       signOut: vi.fn(),
     });
     renderApp('/dashboard');
-    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getByText('Juan Dela Cruz')).toBeInTheDocument();
     expect(screen.getByText('admin')).toBeInTheDocument();
     expect(screen.getByText('JD')).toBeInTheDocument();
   });
