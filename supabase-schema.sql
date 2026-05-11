@@ -19,6 +19,7 @@ DROP FUNCTION IF EXISTS public.is_admin() CASCADE;
 DROP FUNCTION IF EXISTS public.prevent_double_booking() CASCADE;
 DROP FUNCTION IF EXISTS public.update_updated_at() CASCADE;
 DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS public.protect_profile_role_changes() CASCADE;
 DROP FUNCTION IF EXISTS public.append_booking_log(uuid, text, text, text, jsonb) CASCADE;
 DROP FUNCTION IF EXISTS public.log_reservation_changes() CASCADE;
 DROP FUNCTION IF EXISTS public.get_guest_reservation_by_access(text, text) CASCADE;
@@ -98,6 +99,27 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- Prevent regular members from granting themselves admin access through direct API calls.
+CREATE OR REPLACE FUNCTION public.protect_profile_role_changes()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Only admins can change profile roles';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS protect_profile_role_changes ON public.profiles;
+CREATE TRIGGER protect_profile_role_changes
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.protect_profile_role_changes();
+
 -- ============================================================
 -- 3. COURTS
 -- ============================================================
@@ -134,7 +156,7 @@ CREATE TABLE public.reservations (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   court_id uuid REFERENCES public.courts(id) ON DELETE CASCADE NOT NULL,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE, -- nullable for guests
-  title text DEFAULT '',
+  title text DEFAULT '' CHECK (char_length(title) <= 100),
   notes text DEFAULT '',
   start_time time NOT NULL,
   end_time time NOT NULL,
@@ -156,9 +178,9 @@ CREATE TABLE public.reservations (
   payment_notes text,
   pending_payment_notes text,
   payment_reviewed_at timestamptz,
-  customer_name text,
+  customer_name text CHECK (customer_name IS NULL OR char_length(customer_name) <= 80),
   customer_phone text,
-  customer_email text,
+  customer_email text CHECK (customer_email IS NULL OR char_length(customer_email) <= 80),
   booking_source text DEFAULT 'member',
   is_guest_booking boolean DEFAULT false,
   confirmed_at timestamptz,
@@ -532,8 +554,11 @@ CREATE POLICY "profiles_select_own" ON public.profiles
 CREATE POLICY "profiles_update_own" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
+CREATE POLICY "profiles_admin_update" ON public.profiles
+  FOR UPDATE USING (public.is_admin());
+
 CREATE POLICY "profiles_insert_own" ON public.profiles
-  FOR INSERT WITH CHECK (auth.uid() = id);
+  FOR INSERT WITH CHECK (auth.uid() = id AND COALESCE(role, 'user') = 'user');
 
 -- COURTS
 ALTER TABLE public.courts ENABLE ROW LEVEL SECURITY;
@@ -712,6 +737,29 @@ CREATE POLICY "reservation_addons_admin" ON public.reservation_addons FOR ALL US
 
 GRANT SELECT ON public.amenities TO anon;
 GRANT INSERT ON public.reservation_addons TO anon;
+
+-- ============================================================
+-- 10.25 REALTIME SETUP NOTES
+-- ============================================================
+-- Enable Supabase Realtime for these tables in Dashboard > Database > Replication:
+--   - public.reservations
+--   - public.reservation_days
+--   - public.reservation_addons
+--   - public.booking_logs
+--
+-- The app subscribes to these tables so member/admin booking lists and guest
+-- booking detail pages refresh after payment submissions, admin review actions,
+-- date changes, add-on changes, and booking log inserts.
+--
+-- Optional: enable Realtime for these admin-managed setup tables only if you want
+-- other open browser tabs to live-refresh after schedule/court configuration edits:
+--   - public.courts
+--   - public.time_slot_configs
+--   - public.schedule_blocks
+--   - public.amenities
+--
+-- Note: Realtime still respects table RLS for Postgres changes. Keep the RLS
+-- policies above aligned with what each user role is allowed to see.
 
 -- ============================================================
 -- 10.5 GUEST ACCESS RPCS
@@ -950,8 +998,8 @@ CREATE POLICY "avatars_update" ON storage.objects
 -- 12. SEED DATA
 -- ============================================================
 INSERT INTO public.courts (name, description, color, hourly_rate, sort_order) VALUES
-  ('YMCA Indoor Court', 'Full-size hardwood court with professional lighting', '#8B5CF6', 500, 1),
-  ('YMCA Outdoor Street Court', 'Open-air court with concrete surface', '#F97316', 300, 2)
+  ('Main Indoor Court', 'Full-size hardwood court with professional lighting', '#8B5CF6', 500, 1),
+  ('Outdoor Street Court', 'Open-air court with concrete surface', '#F97316', 300, 2)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.amenities (name, description, price, icon, sort_order) VALUES

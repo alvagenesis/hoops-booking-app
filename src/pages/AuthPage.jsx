@@ -101,7 +101,7 @@ const AuthPage = () => {
       <div className="absolute inset-0 z-0 lg:static lg:flex-1 lg:w-1/2 relative overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center lg:bg-[center_top_10%] scale-105"
-          style={{ backgroundImage: "url('/court-bg.png')" }}
+          style={{ backgroundImage: `url(${JSON.stringify(venueConfig.loginBackgroundImage)})` }}
         />
         {/* Mobile: darker overlay + blur. Desktop: lighter gradient, no blur */}
         <div className="absolute inset-0 bg-[#0a0a0c]/80 backdrop-blur-sm lg:backdrop-blur-none lg:bg-gradient-to-t lg:from-[#0a0a0c] lg:via-[#0a0a0c]/20 lg:to-transparent" />
@@ -109,7 +109,7 @@ const AuthPage = () => {
         {/* Desktop Branding Content */}
         <div className="hidden lg:flex absolute inset-0 flex-col justify-end p-12 lg:p-16 xl:p-24 z-10">
           <div className="relative mb-6 self-start">
-            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="relative z-10 h-16 w-auto animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
+            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="relative z-10 h-24 xl:h-28 w-auto max-w-72 animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-5xl xl:text-6xl font-black text-white mb-4 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
             Elevate <br /><span className="text-blue-500">Your Game.</span>
