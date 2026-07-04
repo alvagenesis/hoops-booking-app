@@ -109,7 +109,7 @@ const AuthPage = () => {
         {/* Desktop Branding Content */}
         <div className="hidden lg:flex absolute inset-0 flex-col justify-end p-12 lg:p-16 xl:p-24 z-10">
           <div className="relative mb-6 self-start">
-            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="relative z-10 h-24 xl:h-28 w-auto max-w-72 animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
+            <img src={venueConfig.logoPath} alt={`${venueConfig.name} Logo`} className="relative z-10 h-48 xl:h-56 w-auto max-w-[36rem] animate-in fade-in slide-in-from-bottom-4 duration-700 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-5xl xl:text-6xl font-black text-white mb-4 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
             Elevate <br /><span className="text-blue-500">Your Game.</span>
