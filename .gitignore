@@ -26,3 +26,7 @@ dist-ssr
 # Environment variables
 .env
 .env-*
+
+# Local temp toolchain
+.tmp-bin/
+.tmp-npm/
